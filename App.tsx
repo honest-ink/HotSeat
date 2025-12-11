@@ -4,7 +4,6 @@ import { INITIAL_STOCK_PRICE, MAX_QUESTIONS } from './constants';
 import * as GeminiService from './services/geminiService';
 import BroadcastUI from './components/BroadcastUI';
 import Studio3D from './components/Studio3D';
-import { Monitor, Briefcase, Play, AlertCircle, Calendar, RefreshCcw } from 'lucide-react';
 
 function App() {
   const [phase, setPhase] = useState<GamePhase>(GamePhase.SETUP);
