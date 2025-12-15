@@ -9,7 +9,7 @@ interface Studio3DProps {
 const STUDIO_BG = "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=1920&auto=format&fit=crop"; 
 
 // Professional News Anchor Image
-const ANCHOR_IMG = "https://raw.githubusercontent.com/honest-ink/HotSeat/829db3025772359490e4ebbcf90106ab490611fa/NewsAnchor2.png";
+const ANCHOR_IMG = "https://raw.githubusercontent.com/honest-ink/HotSeat/a3d4c3352b95f9b13bd841806f882334f792a522/NewsAnchor2.png";
 
 const Studio3D: React.FC<Studio3DProps> = ({ isTalking, sentiment }) => {
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
