@@ -38,9 +38,8 @@ function App() {
     maxQuestions: MAX_QUESTIONS,
   });
 
-  // ---- AUDIO (plays on app entry; falls back to first user gesture if blocked) ----
+  // ---- AUDIO (created on mount, started on "Go Live") ----
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [audioReady, setAudioReady] = useState(false);
 
   useEffect(() => {
     const audio = new Audio("/audio/news-agency.mp3");
@@ -49,54 +48,24 @@ function App() {
     audio.volume = 0.6;
     audioRef.current = audio;
 
-    const onCanPlay = () => setAudioReady(true);
-    audio.addEventListener("canplaythrough", onCanPlay);
-
     return () => {
-      audio.removeEventListener("canplaythrough", onCanPlay);
       audio.pause();
       audio.src = "";
       audioRef.current = null;
     };
   }, []);
 
-  const tryStartAudio = async () => {
+  const startAudio = async () => {
     const audio = audioRef.current;
     if (!audio) return;
-
     try {
       await audio.play();
-      return true;
     } catch {
-      return false;
+      // If a browser blocks playback for any reason, we just skip.
+      // The "Go Live" click normally satisfies user-gesture rules.
     }
   };
-
-  useEffect(() => {
-    // attempt autoplay on entry
-    (async () => {
-      const ok = await tryStartAudio();
-      if (ok) return;
-
-      // autoplay blocked -> start on first user gesture
-      const startOnGesture = async () => {
-        const started = await tryStartAudio();
-        if (started) {
-          window.removeEventListener("pointerdown", startOnGesture);
-          window.removeEventListener("keydown", startOnGesture);
-        }
-      };
-
-      window.addEventListener("pointerdown", startOnGesture, { once: false });
-      window.addEventListener("keydown", startOnGesture, { once: false });
-
-      return () => {
-        window.removeEventListener("pointerdown", startOnGesture);
-        window.removeEventListener("keydown", startOnGesture);
-      };
-    })();
-  }, [audioReady]);
-  // ------------------------------------------------------------------------------
+  // --------------------------------------------------------
 
   const handleSetupSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,6 +76,9 @@ function App() {
 
   const startInterview = async () => {
     setPhase(GamePhase.INTRO);
+
+    // Start music only after the user clicks "Go Live"
+    await startAudio();
 
     setTimeout(async () => {
       setPhase(GamePhase.INTERVIEW);
