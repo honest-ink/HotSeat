@@ -94,7 +94,6 @@ function App() {
       const nextQuestionCount =
         sender === "journalist" ? prev.questionCount + 1 : prev.questionCount;
 
-      // Decide end-of-interview here using the *next* values
       if (data.isInterviewOver || nextQuestionCount >= MAX_QUESTIONS) {
         setTimeout(() => setPhase(GamePhase.SUMMARY), 3000);
       }
@@ -318,7 +317,7 @@ function App() {
 
   // INTERVIEW
   return (
-    <div className="w-full h-screen relative flex overflow-hidden bg-transparent">
+    <div className="fixed inset-0 h-[100dvh] w-screen overflow-hidden bg-transparent pb-[env(safe-area-inset-bottom)]">
       <div className="scanlines"></div>
 
       <Studio3D
