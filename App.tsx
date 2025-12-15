@@ -127,16 +127,17 @@ function App() {
 
         <div className="absolute inset-0 bg-[url('https://picsum.photos/1920/1080?grayscale&blur=10')] opacity-20 bg-cover bg-center"></div>
 
-        <div className="relative min-h-[100dvh] w-full flex items-start justify-center p-4 pt-10 pb-[calc(env(safe-area-inset-bottom)+16px)]">
-          <div className="max-w-xl w-full relative z-10 bg-zinc-900/90 border border-zinc-800 p-6 md:p-8 rounded-2xl shadow-2xl backdrop-blur-xl">
-            <div className="flex items-center gap-3 mb-6 text-yellow-500">
+        {/* Extra bottom padding (Safari toolbar) + safe area */}
+        <div className="relative min-h-[100dvh] w-full flex items-start justify-center p-4 pt-8 pb-[calc(env(safe-area-inset-bottom)+96px)]">
+          <div className="max-w-xl w-full relative z-10 bg-zinc-900/90 border border-zinc-800 p-6 md:p-8 rounded-2xl shadow-2xl backdrop-blur-xl max-h-[calc(100dvh-140px)] overflow-y-auto">
+            <div className="flex items-center gap-3 mb-5 md:mb-6 text-yellow-500">
               <Monitor size={32} />
               <h1 className="text-4xl font-black uppercase tracking-tighter">
                 The Hot Seat
               </h1>
             </div>
 
-            <p className="text-zinc-400 mb-8 text-lg">
+            <p className="text-zinc-400 mb-6 md:mb-8 text-lg">
               You are about to go live on the nation&apos;s most aggressive
               business news segment. Prepare your talking points. The market is
               watching.
@@ -196,7 +197,7 @@ function App() {
 
               <button
                 type="submit"
-                className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-black uppercase py-4 rounded-lg tracking-widest flex items-center justify-center gap-2 hover:scale-[1.02] transition-transform"
+                className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-black uppercase py-3.5 md:py-4 rounded-lg tracking-widest flex items-center justify-center gap-2 hover:scale-[1.02] transition-transform"
               >
                 <Play size={20} /> Go Live
               </button>
@@ -320,7 +321,6 @@ function App() {
     <div className="fixed inset-0 h-[100dvh] w-screen overflow-hidden bg-transparent pb-[env(safe-area-inset-bottom)]">
       <div className="scanlines"></div>
 
-      {/* Background */}
       <div className="absolute inset-0 z-0">
         <Studio3D
           isTalking={isJournalistTalking}
@@ -334,7 +334,6 @@ function App() {
         />
       </div>
 
-      {/* Alpha mat (between background and UI) */}
       <div
         className="pointer-events-none absolute inset-x-0 z-10"
         style={{
@@ -345,7 +344,6 @@ function App() {
         }}
       />
 
-      {/* UI */}
       <div className="absolute inset-0 z-20">
         <BroadcastUI
           messages={messages}
