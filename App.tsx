@@ -235,9 +235,7 @@ function App() {
           <div className="shrink-0 flex justify-center">
             <div
               className={`inline-flex items-center justify-center w-20 h-20 rounded-full mb-6 ${
-                isSuccess
-                  ? "bg-green-500 text-black"
-                  : "bg-red-500 text-white"
+                isSuccess ? "bg-green-500 text-black" : "bg-red-500 text-white"
               }`}
             >
               <Monitor size={40} />
@@ -320,24 +318,41 @@ function App() {
     <div className="fixed inset-0 h-[100dvh] w-screen overflow-hidden bg-transparent pb-[env(safe-area-inset-bottom)]">
       <div className="scanlines"></div>
 
-      <Studio3D
-        isTalking={isJournalistTalking}
-        sentiment={
-          interviewState.audienceSentiment > 60
-            ? "positive"
-            : interviewState.audienceSentiment < 40
-            ? "negative"
-            : "neutral"
-        }
+      {/* Background */}
+      <div className="absolute inset-0 z-0">
+        <Studio3D
+          isTalking={isJournalistTalking}
+          sentiment={
+            interviewState.audienceSentiment > 60
+              ? "positive"
+              : interviewState.audienceSentiment < 40
+              ? "negative"
+              : "neutral"
+          }
+        />
+      </div>
+
+      {/* Alpha mat (between background and UI) */}
+      <div
+        className="pointer-events-none absolute inset-x-0 z-10"
+        style={{
+          top: "28%",
+          bottom: 0,
+          background:
+            "linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.18) 22%, rgba(0,0,0,0.55) 50%, rgba(0,0,0,0.85) 78%, rgba(0,0,0,1) 100%)",
+        }}
       />
 
-      <BroadcastUI
-        messages={messages}
-        state={interviewState}
-        onSendMessage={handleUserResponse}
-        isLoading={isLoading}
-        companyName={company.name}
-      />
+      {/* UI */}
+      <div className="absolute inset-0 z-20">
+        <BroadcastUI
+          messages={messages}
+          state={interviewState}
+          onSendMessage={handleUserResponse}
+          isLoading={isLoading}
+          companyName={company.name}
+        />
+      </div>
     </div>
   );
 }
