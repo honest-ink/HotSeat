@@ -13,6 +13,9 @@ RUN npm install
 # Copy the rest of the application code
 COPY . .
 
+ARG CACHEBUST=1
+RUN echo "CACHEBUST=$CACHEBUST"
+
 # Build the app (since you have vite.config.ts, you likely need a build step)
 RUN npm run build
 
