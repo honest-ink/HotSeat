@@ -122,84 +122,86 @@ function App() {
   // SETUP
   if (phase === GamePhase.SETUP) {
     return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center p-4 relative overflow-hidden font-sans">
+      <div className="fixed inset-0 h-[100dvh] w-screen bg-black text-white font-sans overflow-y-auto overscroll-contain">
         <div className="scanlines"></div>
 
         <div className="absolute inset-0 bg-[url('https://picsum.photos/1920/1080?grayscale&blur=10')] opacity-20 bg-cover bg-center"></div>
 
-        <div className="max-w-xl w-full relative z-10 bg-zinc-900/90 border border-zinc-800 p-8 rounded-2xl shadow-2xl backdrop-blur-xl">
-          <div className="flex items-center gap-3 mb-6 text-yellow-500">
-            <Monitor size={32} />
-            <h1 className="text-4xl font-black uppercase tracking-tighter">
-              The Hot Seat
-            </h1>
-          </div>
+        <div className="relative min-h-[100dvh] w-full flex items-start justify-center p-4 pt-10 pb-[calc(env(safe-area-inset-bottom)+16px)]">
+          <div className="max-w-xl w-full relative z-10 bg-zinc-900/90 border border-zinc-800 p-6 md:p-8 rounded-2xl shadow-2xl backdrop-blur-xl">
+            <div className="flex items-center gap-3 mb-6 text-yellow-500">
+              <Monitor size={32} />
+              <h1 className="text-4xl font-black uppercase tracking-tighter">
+                The Hot Seat
+              </h1>
+            </div>
 
-          <p className="text-zinc-400 mb-8 text-lg">
-            You are about to go live on the nation&apos;s most aggressive
-            business news segment. Prepare your talking points. The market is
-            watching.
-          </p>
+            <p className="text-zinc-400 mb-8 text-lg">
+              You are about to go live on the nation&apos;s most aggressive
+              business news segment. Prepare your talking points. The market is
+              watching.
+            </p>
 
-          <form onSubmit={handleSetupSubmit} className="space-y-6">
-            <div>
-              <label className="block text-xs font-bold uppercase text-zinc-500 mb-2">
-                Company Name
-              </label>
-              <div className="relative">
-                <Briefcase
-                  className="absolute left-3 top-3.5 text-zinc-500"
-                  size={18}
-                />
+            <form onSubmit={handleSetupSubmit} className="space-y-6">
+              <div>
+                <label className="block text-xs font-bold uppercase text-zinc-500 mb-2">
+                  Company Name
+                </label>
+                <div className="relative">
+                  <Briefcase
+                    className="absolute left-3 top-3.5 text-zinc-500"
+                    size={18}
+                  />
+                  <input
+                    required
+                    className="w-full bg-black/50 border border-zinc-700 rounded-lg py-3 pl-10 pr-4 focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none transition-all"
+                    placeholder="e.g. OmniCorp"
+                    value={company.name}
+                    onChange={(e) =>
+                      setCompany({ ...company, name: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-zinc-500 mb-2">
+                  Industry
+                </label>
                 <input
                   required
-                  className="w-full bg-black/50 border border-zinc-700 rounded-lg py-3 pl-10 pr-4 focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none transition-all"
-                  placeholder="e.g. OmniCorp"
-                  value={company.name}
+                  className="w-full bg-black/50 border border-zinc-700 rounded-lg py-3 px-4 focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none transition-all"
+                  placeholder="e.g. Biotechnology, AI Defense, Fast Food"
+                  value={company.industry}
                   onChange={(e) =>
-                    setCompany({ ...company, name: e.target.value })
+                    setCompany({ ...company, industry: e.target.value })
                   }
                 />
               </div>
-            </div>
 
-            <div>
-              <label className="block text-xs font-bold uppercase text-zinc-500 mb-2">
-                Industry
-              </label>
-              <input
-                required
-                className="w-full bg-black/50 border border-zinc-700 rounded-lg py-3 px-4 focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none transition-all"
-                placeholder="e.g. Biotechnology, AI Defense, Fast Food"
-                value={company.industry}
-                onChange={(e) =>
-                  setCompany({ ...company, industry: e.target.value })
-                }
-              />
-            </div>
+              <div>
+                <label className="block text-xs font-bold uppercase text-zinc-500 mb-2">
+                  Mission Statement (The Pitch)
+                </label>
+                <textarea
+                  required
+                  className="w-full bg-black/50 border border-zinc-700 rounded-lg py-3 px-4 focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none transition-all h-24 resize-none"
+                  placeholder="We make the world better by..."
+                  value={company.mission}
+                  onChange={(e) =>
+                    setCompany({ ...company, mission: e.target.value })
+                  }
+                />
+              </div>
 
-            <div>
-              <label className="block text-xs font-bold uppercase text-zinc-500 mb-2">
-                Mission Statement (The Pitch)
-              </label>
-              <textarea
-                required
-                className="w-full bg-black/50 border border-zinc-700 rounded-lg py-3 px-4 focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none transition-all h-24 resize-none"
-                placeholder="We make the world better by..."
-                value={company.mission}
-                onChange={(e) =>
-                  setCompany({ ...company, mission: e.target.value })
-                }
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-black uppercase py-4 rounded-lg tracking-widest flex items-center justify-center gap-2 hover:scale-[1.02] transition-transform"
-            >
-              <Play size={20} /> Go Live
-            </button>
-          </form>
+              <button
+                type="submit"
+                className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-black uppercase py-4 rounded-lg tracking-widest flex items-center justify-center gap-2 hover:scale-[1.02] transition-transform"
+              >
+                <Play size={20} /> Go Live
+              </button>
+            </form>
+          </div>
         </div>
       </div>
     );
