@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   GamePhase,
   CompanyProfile,
@@ -37,6 +37,66 @@ function App() {
     questionCount: 0,
     maxQuestions: MAX_QUESTIONS,
   });
+
+  // ---- AUDIO (plays on app entry; falls back to first user gesture if blocked) ----
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [audioReady, setAudioReady] = useState(false);
+
+  useEffect(() => {
+    const audio = new Audio("/audio/news-agency.mp3");
+    audio.preload = "auto";
+    audio.loop = true;
+    audio.volume = 0.6;
+    audioRef.current = audio;
+
+    const onCanPlay = () => setAudioReady(true);
+    audio.addEventListener("canplaythrough", onCanPlay);
+
+    return () => {
+      audio.removeEventListener("canplaythrough", onCanPlay);
+      audio.pause();
+      audio.src = "";
+      audioRef.current = null;
+    };
+  }, []);
+
+  const tryStartAudio = async () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    try {
+      await audio.play();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  useEffect(() => {
+    // attempt autoplay on entry
+    (async () => {
+      const ok = await tryStartAudio();
+      if (ok) return;
+
+      // autoplay blocked -> start on first user gesture
+      const startOnGesture = async () => {
+        const started = await tryStartAudio();
+        if (started) {
+          window.removeEventListener("pointerdown", startOnGesture);
+          window.removeEventListener("keydown", startOnGesture);
+        }
+      };
+
+      window.addEventListener("pointerdown", startOnGesture, { once: false });
+      window.addEventListener("keydown", startOnGesture, { once: false });
+
+      return () => {
+        window.removeEventListener("pointerdown", startOnGesture);
+        window.removeEventListener("keydown", startOnGesture);
+      };
+    })();
+  }, [audioReady]);
+  // ------------------------------------------------------------------------------
 
   const handleSetupSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -222,7 +282,7 @@ function App() {
     );
   }
 
-  // INTRO (fixed: centered + responsive size, no clipping on iOS)
+  // INTRO
   if (phase === GamePhase.INTRO) {
     return (
       <div className="fixed inset-0 h-[100dvh] w-screen bg-black flex items-center justify-center overflow-hidden">
