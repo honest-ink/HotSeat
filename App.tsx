@@ -126,10 +126,8 @@ function App() {
         <div className="scanlines"></div>
         <div className="absolute inset-0 bg-[url('https://picsum.photos/1920/1080?grayscale&blur=10')] opacity-20 bg-cover bg-center"></div>
 
-        {/* Center the card, but keep it within the viewport */}
         <div className="relative z-10 h-full w-full flex items-center justify-center p-4">
           <div className="max-w-xl w-full bg-zinc-900/90 border border-zinc-800 rounded-2xl shadow-2xl backdrop-blur-xl overflow-hidden max-h-[calc(100dvh-32px)] flex flex-col">
-            {/* Header (non-scrolling) */}
             <div className="p-6 md:p-8 pb-4 md:pb-6">
               <div className="flex items-center gap-3 mb-4 text-yellow-500">
                 <Monitor size={32} />
@@ -145,7 +143,6 @@ function App() {
               </p>
             </div>
 
-            {/* Scrollable form body */}
             <div className="px-6 md:px-8 flex-1 overflow-y-auto">
               <form onSubmit={handleSetupSubmit} className="space-y-5 pb-6">
                 <div>
@@ -199,12 +196,10 @@ function App() {
                   />
                 </div>
 
-                {/* Spacer so the last field doesn't hide under the sticky button */}
                 <div className="h-2" />
               </form>
             </div>
 
-            {/* Sticky footer button (always visible) */}
             <div className="px-6 md:px-8 pb-[calc(env(safe-area-inset-bottom)+16px)] pt-4 bg-gradient-to-t from-black/70 via-black/40 to-transparent border-t border-white/5">
               <button
                 type="submit"
@@ -216,24 +211,38 @@ function App() {
               </button>
             </div>
 
-            {/* Hidden form id hook (keeps button working even if moved) */}
-            <form id="__setupForm__" onSubmit={handleSetupSubmit} className="hidden" />
+            <form
+              id="__setupForm__"
+              onSubmit={handleSetupSubmit}
+              className="hidden"
+            />
           </div>
         </div>
       </div>
     );
   }
 
-  // INTRO
+  // INTRO (fixed: centered + responsive size, no clipping on iOS)
   if (phase === GamePhase.INTRO) {
     return (
-      <div className="min-h-screen bg-black flex flex-col items-center justify-center relative overflow-hidden">
+      <div className="fixed inset-0 h-[100dvh] w-screen bg-black flex items-center justify-center overflow-hidden">
         <div className="scanlines"></div>
-        <div className="text-center animate-pulse">
-          <h1 className="text-8xl font-black text-white tracking-[0.2em] mb-4 scale-150 transform transition-transform duration-[3000ms]">
+
+        <div className="flex flex-col items-center justify-center text-center px-6">
+          <h1
+            className="
+              font-black text-white uppercase
+              text-[18vw] sm:text-[14vw] md:text-8xl
+              tracking-[0.15em]
+              leading-none
+              whitespace-nowrap
+              max-w-full
+            "
+          >
             LIVE
           </h1>
-          <p className="text-red-500 font-mono text-xl">
+
+          <p className="mt-4 text-red-500 font-mono text-sm md:text-xl tracking-widest">
             CONNECTING TO SATELLITE...
           </p>
         </div>
