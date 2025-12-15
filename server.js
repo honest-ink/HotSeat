@@ -7,7 +7,6 @@ const { GoogleGenAI, Type } = require("@google/genai");
 const app = express();
 const port = process.env.PORT || 8080;
 
-// Parse JSON bodies
 app.use(express.json({ limit: "1mb" }));
 
 // ---- Gemini setup (SERVER ONLY) ----
@@ -15,7 +14,6 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 if (!GEMINI_API_KEY) {
   console.error("Missing env var GEMINI_API_KEY");
 }
-
 const ai = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : null;
 
 // Simple in-memory chat store (will reset if instance restarts)
@@ -23,23 +21,40 @@ const sessions = new Map();
 
 function createSystemInstruction(company) {
   return `
-You are Alex Sterling, the ruthless but charismatic host of the prime-time business news show "The Hot Seat".
-You are interviewing the CEO of "${company.name}", a company in the "${company.industry}" industry.
+You are "Diane", the ruthless but charismatic host of a live business news show called "The Hot Seat".
+You are interviewing the CEO of "${company.name}" in the "${company.industry}" industry.
 Their mission is: "${company.mission}".
 
-Your Goal: Grill them. Be skeptical but fair. React to their answers dynamically.
-- If they give a vague answer, press them.
-- If they give a great answer, acknowledge it but move to the next hard hitting question.
-- Keep your responses punchy and suitable for TV (under 40 words usually).
+Hard constraints:
+- Keep output under ~40 words unless absolutely needed.
+- Ask one sharp question at a time.
+- Keep the tone tense, skeptical, fast.
 
-You must output your response in JSON format ONLY.
-The JSON structure must be:
+Game classification task:
+After each CEO answer, classify that answer into one category:
+- "good": clear, direct, credible, addresses the question, plain language, acknowledges risk where needed, does not contradict earlier statements.
+- "evasive": deflects, vague, over-scripted, dodges the question, corporate language without substance.
+- "bad": contradictory, dismissive, careless, admits fault without control, undermines the company’s stated position.
+
+Contradiction rule:
+- If the CEO contradicts their earlier statements in this interview, set isContradiction = true.
+
+Special messages:
+- If the user message is exactly "[NEXT_QUESTION]" then DO NOT classify an answer. Just continue the interview with the next question.
+  In that case, still output "category": "evasive" and "isContradiction": false (placeholders), because the client expects those fields.
+
+Output JSON ONLY. No markdown. No extra text.
+The JSON must match this schema:
 {
-  "text": "Your spoken response/question to the guest",
+  "text": string,
+  "category": "good" | "evasive" | "bad",
+  "isContradiction": boolean,
   "sentiment": "positive" | "negative" | "neutral",
-  "stockChange": number,
-  "isInterviewOver": boolean
+  "reason": string
 }
+
+- sentiment is optional flavour.
+- reason is a short dev-only note (do not address the CEO directly with it).
 `.trim();
 }
 
@@ -50,6 +65,28 @@ function safeParseJson(text) {
     return null;
   }
 }
+
+function fallbackResponse(text) {
+  return {
+    text,
+    category: "evasive",
+    isContradiction: false,
+    sentiment: "neutral",
+    reason: "fallback",
+  };
+}
+
+const responseSchema = {
+  type: Type.OBJECT,
+  properties: {
+    text: { type: Type.STRING },
+    category: { type: Type.STRING, enum: ["good", "evasive", "bad"] },
+    isContradiction: { type: Type.BOOLEAN },
+    sentiment: { type: Type.STRING, enum: ["positive", "negative", "neutral"] },
+    reason: { type: Type.STRING },
+  },
+  required: ["text", "category", "isContradiction"],
+};
 
 app.get("/api/health", (req, res) => {
   res.json({ ok: true, hasKey: Boolean(GEMINI_API_KEY) });
@@ -71,25 +108,19 @@ app.post("/api/init", async (req, res) => {
       config: {
         systemInstruction: createSystemInstruction(company),
         responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            text: { type: Type.STRING },
-            sentiment: { type: Type.STRING, enum: ["positive", "negative", "neutral"] },
-            stockChange: { type: Type.NUMBER },
-            isInterviewOver: { type: Type.BOOLEAN }
-          },
-          required: ["text", "sentiment", "stockChange", "isInterviewOver"]
-        }
-      }
+        responseSchema,
+      },
     });
 
     sessions.set(sessionId, chatSession);
 
     console.log("[init] session:", sessionId, "company:", company.name);
 
+    // First message: intro + first question.
+    // Client starts the 60s timer when it receives this.
     const first = await chatSession.sendMessage({
-      message: "Start the show. Introduce the guest to the audience and ask the first opening question. Be dramatic."
+      message:
+        'Start the show. Introduce the guest in one line and ask the first hard opening question. Output JSON only.',
     });
 
     const parsed = safeParseJson(first.text || "");
@@ -98,14 +129,21 @@ app.post("/api/init", async (req, res) => {
       return res.status(502).json({ error: "Gemini returned non-JSON", raw: first.text });
     }
 
-    res.json({ sessionId, ...parsed });
+    // If Gemini forgets placeholders, force them so the client doesn't crash.
+    const normalized = {
+      text: parsed.text ?? "Welcome. Let’s start. What’s your core business risk right now?",
+      category: parsed.category ?? "evasive",
+      isContradiction: Boolean(parsed.isContradiction),
+      sentiment: parsed.sentiment,
+      reason: parsed.reason,
+    };
+
+    res.json({ sessionId, ...normalized });
   } catch (err) {
     console.error("[init] error:", err);
     res.status(500).json({
-      text: "Welcome to the show. Tell us about your company.",
-      sentiment: "neutral",
-      stockChange: 0,
-      isInterviewOver: false
+      sessionId: crypto.randomUUID(),
+      ...fallbackResponse("Welcome. Let’s start. Why should investors trust you today?"),
     });
   }
 });
@@ -115,30 +153,39 @@ app.post("/api/chat", async (req, res) => {
     if (!ai) return res.status(500).json({ error: "Server missing GEMINI_API_KEY" });
 
     const { sessionId, message } = req.body || {};
-    if (!sessionId || !message) return res.status(400).json({ error: "Missing sessionId or message" });
+    if (!sessionId) return res.status(400).json({ error: "Missing sessionId" });
 
     const chatSession = sessions.get(sessionId);
     if (!chatSession) return res.status(404).json({ error: "Unknown sessionId (server restarted?)" });
 
-    console.log("[chat]", sessionId, "user:", message);
+    const msg = typeof message === "string" ? message : "";
+    if (!msg) return res.status(400).json({ error: "Missing message" });
 
-    const r = await chatSession.sendMessage({ message });
+    console.log("[chat]", sessionId, "user:", msg);
+
+    const r = await chatSession.sendMessage({ message: msg });
+
     const parsed = safeParseJson(r.text || "");
     if (!parsed) {
       console.error("[chat] bad json:", r.text);
       return res.status(502).json({ error: "Gemini returned non-JSON", raw: r.text });
     }
 
-    console.log("[chat]", sessionId, "host:", parsed.text);
-    res.json(parsed);
+    const normalized = {
+      text: parsed.text ?? "Answer the question directly. What are you hiding?",
+      category: parsed.category ?? "evasive",
+      isContradiction: Boolean(parsed.isContradiction),
+      sentiment: parsed.sentiment,
+      reason: parsed.reason,
+    };
+
+    console.log("[chat]", sessionId, "host:", normalized.text);
+    res.json(normalized);
   } catch (err) {
     console.error("[chat] error:", err);
-    res.status(500).json({
-      text: "We seem to be having technical difficulties. Let's move on.",
-      sentiment: "neutral",
-      stockChange: -1.5,
-      isInterviewOver: false
-    });
+    res.status(500).json(
+      fallbackResponse("Technical glitch. Short answer: what went wrong this quarter?")
+    );
   }
 });
 
