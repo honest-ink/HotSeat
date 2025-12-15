@@ -47,7 +47,7 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
             LIVE
           </div>
           <div className="bg-black/80 text-white text-[10px] px-2 py-0.5 tracking-wider uppercase backdrop-blur-sm">
-            Washington D.C.
+            London
           </div>
         </div>
 
