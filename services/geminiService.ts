@@ -1,7 +1,6 @@
-import { GoogleGenAI, Type, Chat } from "@google/genai";
 import { CompanyProfile, GeminiResponse } from "../types";
 
-let chatSession: Chat | null = null;
+let companyProfile: CompanyProfile | null = null;
 
 const createSystemInstruction = (company: CompanyProfile) => `
 You are Alex Sterling, the ruthless but charismatic host of the prime-time business news show "The Hot Seat".
@@ -23,65 +22,78 @@ The JSON structure must be:
 }
 `;
 
-export const initInterview = async (company: CompanyProfile): Promise<GeminiResponse> => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) throw new Error("API Key missing");
-
-  const ai = new GoogleGenAI({ apiKey });
-
-  chatSession = ai.chats.create({
-    model: 'gemini-2.5-flash',
-    config: {
-      systemInstruction: createSystemInstruction(company),
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          text: { type: Type.STRING },
-          sentiment: { type: Type.STRING, enum: ['positive', 'negative', 'neutral'] },
-          stockChange: { type: Type.NUMBER },
-          isInterviewOver: { type: Type.BOOLEAN },
-        },
-        required: ["text", "sentiment", "stockChange", "isInterviewOver"]
-      }
-    }
+// Helper: call your server (Cloud Run) instead of calling Gemini in the browser
+async function callServer(prompt: string): Promise<GeminiResponse> {
+  const r = await fetch("/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: prompt }),
   });
 
-  // Initial trigger to start the conversation
+  if (!r.ok) {
+    const text = await r.text();
+    throw new Error(text || `Request failed: ${r.status}`);
+  }
+
+  const data = (await r.json()) as { text: string };
+
+  // Server returns { text: "..." }. That text should be JSON per your prompt.
+  const parsed = JSON.parse(data.text || "{}") as GeminiResponse;
+
+  // Basic safety defaults
+  return {
+    text: parsed.text ?? "",
+    sentiment: parsed.sentiment ?? "neutral",
+    stockChange: typeof parsed.stockChange === "number" ? parsed.stockChange : 0,
+    isInterviewOver: !!parsed.isInterviewOver,
+  };
+}
+
+export const initInterview = async (company: CompanyProfile): Promise<GeminiResponse> => {
+  companyProfile = company;
+
+  const system = createSystemInstruction(company);
+  const prompt =
+    system +
+    `
+
+Start the show. Introduce the guest to the audience and ask the first opening question. Be dramatic.`;
+
   try {
-    const response = await chatSession.sendMessage({ 
-      message: "Start the show. Introduce the guest to the audience and ask the first opening question. Be dramatic." 
-    });
-    
-    // Parse the JSON
-    const data = JSON.parse(response.text || "{}") as GeminiResponse;
-    return data;
+    return await callServer(prompt);
   } catch (err) {
     console.error("Failed to start interview", err);
     return {
       text: "Welcome to the show. Tell us about your company.",
       sentiment: "neutral",
       stockChange: 0,
-      isInterviewOver: false
+      isInterviewOver: false,
     };
   }
 };
 
 export const sendUserAnswer = async (answer: string): Promise<GeminiResponse> => {
-  if (!chatSession) throw new Error("Chat session not initialized");
+  if (!companyProfile) throw new Error("Interview not initialized");
+
+  const system = createSystemInstruction(companyProfile);
+  const prompt =
+    system +
+    `
+
+The guest just answered:
+"${answer}"
+
+Respond with the next question/comment in the required JSON format.`;
 
   try {
-    const response = await chatSession.sendMessage({ message: answer });
-    const text = response.text || "{}";
-    const data = JSON.parse(text) as GeminiResponse;
-    return data;
+    return await callServer(prompt);
   } catch (err) {
     console.error("Gemini Error", err);
     return {
       text: "We seem to be having technical difficulties. Let's move on.",
       sentiment: "neutral",
       stockChange: -1.5,
-      isInterviewOver: false
+      isInterviewOver: false,
     };
   }
 };
