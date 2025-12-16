@@ -302,7 +302,7 @@ export default function App() {
     const line = pickOne(SILENCE_LINES);
 
     postJournalistLine(line, {
-      stockImpact: -2,
+      stockImpact: -0.75,
       microcopy: "CEO fails to respond",
       flash: "red",
       tick: "down",
