@@ -4,7 +4,7 @@ export const FAIL_STOCK_PRICE = 95.0;
 
 // Interview timing
 export const INTERVIEW_DURATION_MS = 60_000; // 60 seconds total
-export const SILENCE_MS = 5_000; // if player hasn't answered within 5s of a question
+export const SILENCE_MS = 10_000; // if player hasn't answered within 5s of a question
 
 // Question pacing (after an answer resolves)
 export const NEXT_QUESTION_MIN_MS = 6_000;
