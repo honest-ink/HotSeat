@@ -4,7 +4,6 @@ import {
   CompanyProfile,
   Message,
   InterviewState,
-  GeminiResponse,
   AnswerCategory,
   WorstAnswer,
 } from "./types";
@@ -40,6 +39,14 @@ function pickOne<T>(arr: T[]) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+type ImpactToastState = {
+  id: string;
+  delta: number;
+  microcopy?: string;
+  flash?: "red";
+  tick?: "up" | "down";
+};
+
 function App() {
   const [phase, setPhase] = useState<GamePhase>(GamePhase.SETUP);
   const [company, setCompany] = useState<CompanyProfile>({
@@ -61,6 +68,27 @@ function App() {
   });
 
   const lastQuestionRef = useRef<string | undefined>(undefined);
+
+  // --- share impact toast ---
+  const [impactToast, setImpactToast] = useState<ImpactToastState | null>(null);
+  const impactHideTimeoutRef = useRef<number | null>(null);
+
+  const showImpactToast = (payload: Omit<ImpactToastState, "id">) => {
+    if (impactHideTimeoutRef.current) {
+      window.clearTimeout(impactHideTimeoutRef.current);
+      impactHideTimeoutRef.current = null;
+    }
+
+    setImpactToast({
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      ...payload,
+    });
+
+    impactHideTimeoutRef.current = window.setTimeout(() => {
+      setImpactToast(null);
+      impactHideTimeoutRef.current = null;
+    }, 1200);
+  };
 
   // ---- timers ----
   const timerIntervalRef = useRef<number | null>(null);
@@ -114,6 +142,10 @@ function App() {
       window.clearTimeout(nextQuestionTimeoutRef.current);
       nextQuestionTimeoutRef.current = null;
     }
+    if (impactHideTimeoutRef.current) {
+      window.clearTimeout(impactHideTimeoutRef.current);
+      impactHideTimeoutRef.current = null;
+    }
   };
 
   useEffect(() => {
@@ -132,6 +164,7 @@ function App() {
     // reset state for a clean run
     clearTimers();
     setMessages([]);
+    setImpactToast(null);
     lastQuestionRef.current = undefined;
 
     setInterviewState({
@@ -258,6 +291,16 @@ function App() {
       Math.min(text.length * 50, 3000)
     );
 
+    // restore the "impact" popup
+    if (typeof opts?.stockImpact === "number") {
+      showImpactToast({
+        delta: opts.stockImpact,
+        microcopy: opts.microcopy,
+        flash: opts.flash,
+        tick: opts.tick,
+      });
+    }
+
     postMessage({
       id: Date.now().toString(),
       sender: "journalist",
@@ -368,7 +411,10 @@ function App() {
     const scored = scoreAnswer(ctx);
 
     // update evasive streak + apply delta
-    setInterviewState((prev) => ({ ...prev, evasiveStreak: scored.nextEvasiveStreak }));
+    setInterviewState((prev) => ({
+      ...prev,
+      evasiveStreak: scored.nextEvasiveStreak,
+    }));
 
     const worst: WorstAnswer | undefined =
       scored.delta < 0
@@ -441,7 +487,11 @@ function App() {
     });
 
     // apply compounding streak: silence counts as evasive
-    setInterviewState((prev) => ({ ...prev, awaitingAnswer: false, evasiveStreak: prev.evasiveStreak + 1 }));
+    setInterviewState((prev) => ({
+      ...prev,
+      awaitingAnswer: false,
+      evasiveStreak: prev.evasiveStreak + 1,
+    }));
 
     const worst: WorstAnswer = {
       userText: "(no response)",
@@ -594,7 +644,9 @@ function App() {
 
   // SUMMARY
   if (phase === GamePhase.SUMMARY) {
-    const outcome = interviewState.outcome ?? (interviewState.stockPrice >= FAIL_STOCK_PRICE ? "success" : "failure");
+    const outcome =
+      interviewState.outcome ??
+      (interviewState.stockPrice >= FAIL_STOCK_PRICE ? "success" : "failure");
     const isSuccess = outcome === "success";
 
     const worst = interviewState.worstAnswer;
@@ -619,7 +671,9 @@ function App() {
             {isSuccess ? "Segment Survived" : "Cut To Commercial"}
           </h2>
           <p className="text-zinc-400 text-lg md:text-xl mb-8 shrink-0">
-            {isSuccess ? "You survived the interview — barely." : "Confidence collapsed on-air."}
+            {isSuccess
+              ? "You survived the interview — barely."
+              : "Confidence collapsed on-air."}
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 shrink-0">
@@ -661,11 +715,13 @@ function App() {
                 <AlertCircle className="text-yellow-500 shrink-0 mt-1" />
                 <div className="w-full">
                   <h3 className="font-bold text-lg mb-2">
-                    Worst Answer ({worst.category.toUpperCase()} {worst.delta.toFixed(2)})
+                    Worst Answer ({worst.category.toUpperCase()}{" "}
+                    {worst.delta.toFixed(2)})
                   </h3>
                   {worst.questionText && (
                     <div className="text-zinc-300 text-sm mb-2">
-                      <span className="font-bold">Q:</span> {worst.questionText}
+                      <span className="font-bold">Q:</span>{" "}
+                      {worst.questionText}
                     </div>
                   )}
                   <div className="text-zinc-300 text-sm">
@@ -727,6 +783,39 @@ function App() {
             "linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.18) 22%, rgba(0,0,0,0.55) 50%, rgba(0,0,0,0.85) 78%, rgba(0,0,0,1) 100%)",
         }}
       />
+
+      {/* Share price impact popup */}
+      {impactToast && (
+        <div className="pointer-events-none absolute right-4 bottom-[160px] z-30">
+          <div
+            className={`px-3 py-2 rounded-xl border text-white backdrop-blur-md shadow-xl
+              ${
+                impactToast.flash === "red"
+                  ? "bg-red-950/50 border-red-500/40"
+                  : "bg-black/50 border-white/20"
+              }
+            `}
+          >
+            <div className="flex items-center gap-2 font-mono text-sm">
+              <span className="tabular-nums">
+                {impactToast.tick === "down"
+                  ? "↘"
+                  : impactToast.tick === "up"
+                  ? "↗"
+                  : impactToast.delta < 0
+                  ? "↘"
+                  : "↗"}{" "}
+                {(impactToast.delta > 0 ? "+" : "") + impactToast.delta.toFixed(2)}
+              </span>
+              {impactToast.microcopy && (
+                <span className="font-sans text-xs text-white/80">
+                  {impactToast.microcopy}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="absolute inset-0 z-20">
         <BroadcastUI
