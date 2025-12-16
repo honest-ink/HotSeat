@@ -169,9 +169,10 @@ function App() {
               </div>
 
               <p className="text-zinc-400 text-base md:text-lg">
-                You are about to go live on the nation&apos;s most aggressive
-                business news segment. Prepare your talking points. The market
-                is watching.
+                You are about to go live on the nation&apos;s toughest
+                business news show. Every answer moves the market. Keep
+                your company's share price above 95.00 for 60 seconds.
+                Fail, and the board will be calling for your head.
               </p>
             </div>
 
