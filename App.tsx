@@ -194,20 +194,15 @@ function App() {
     const tickEveryMs = 200;
 
     timerIntervalRef.current = window.setInterval(() => {
-  setInterviewState((prev) => {
-    const next = Math.max(0, prev.timeLeftMs - tickEveryMs);
+      setInterviewState((prev) => {
+        const next = Math.max(0, prev.timeLeftMs - tickEveryMs);
 
-    // success if timer hits 0 and not already failed
-    if (next === 0 && prev.stockPrice >= FAIL_STOCK_PRICE) {
-      clearTimers();
-      setPhase(GamePhase.SUMMARY);
-      return { ...prev, timeLeftMs: 0, outcome: "success" };
-    }
-
-    return { ...prev, timeLeftMs: next };
-  });
-}, tickEveryMs);
-
+        // success if timer hits 0 and not already failed
+        if (next === 0 && prev.stockPrice >= FAIL_STOCK_PRICE) {
+          clearTimers();
+          setPhase(GamePhase.SUMMARY);
+          return { ...prev, timeLeftMs: 0, outcome: "success" };
+        }
 
         return { ...prev, timeLeftMs: next };
       });
@@ -370,7 +365,10 @@ function App() {
     const scored = scoreAnswer(ctx);
 
     // update evasive streak + apply delta
-    setInterviewState((prev) => ({ ...prev, evasiveStreak: scored.nextEvasiveStreak }));
+    setInterviewState((prev) => ({
+      ...prev,
+      evasiveStreak: scored.nextEvasiveStreak,
+    }));
 
     const worst: WorstAnswer | undefined =
       scored.delta < 0
@@ -399,7 +397,8 @@ function App() {
 
     // if game still running, schedule next question
     setInterviewState((prev) => {
-      const stillRunning = prev.timeLeftMs > 0 && prev.stockPrice >= FAIL_STOCK_PRICE;
+      const stillRunning =
+        prev.timeLeftMs > 0 && prev.stockPrice >= FAIL_STOCK_PRICE;
       if (stillRunning) scheduleNextQuestion();
       return prev;
     });
@@ -435,7 +434,7 @@ function App() {
     const line = pickOne(SILENCE_LINES);
 
     postJournalistLine(line, {
-      stockImpact: -2.0,
+      stockImpact: -0.7,
       microcopy: "CEO fails to respond",
       flash: "red",
       tick: "down",
@@ -443,7 +442,11 @@ function App() {
     });
 
     // apply compounding streak: silence counts as evasive
-    setInterviewState((prev) => ({ ...prev, awaitingAnswer: false, evasiveStreak: prev.evasiveStreak + 1 }));
+    setInterviewState((prev) => ({
+      ...prev,
+      awaitingAnswer: false,
+      evasiveStreak: prev.evasiveStreak + 1,
+    }));
 
     const worst: WorstAnswer = {
       userText: "(no response)",
@@ -457,7 +460,8 @@ function App() {
 
     // schedule next question if still alive
     setInterviewState((prev) => {
-      const stillRunning = prev.timeLeftMs > 0 && prev.stockPrice >= FAIL_STOCK_PRICE;
+      const stillRunning =
+        prev.timeLeftMs > 0 && prev.stockPrice >= FAIL_STOCK_PRICE;
       if (stillRunning) scheduleNextQuestion();
       return prev;
     });
@@ -481,10 +485,10 @@ function App() {
               </div>
 
               <p className="text-zinc-400 text-base md:text-lg">
-                You are about to go live on the nation&apos;s toughest
-                business news show. Every answer moves the market. Keep
-                your company's share price above 95.00 for 60 seconds.
-                Fail, and the board will be calling for your head.
+                You’re live on the country’s toughest business news show. Every
+                answer moves the market. Keep your company’s share price above
+                95.00 for 60 seconds. Fail, and the board will be calling for
+                your head.
               </p>
             </div>
 
@@ -597,7 +601,9 @@ function App() {
 
   // SUMMARY
   if (phase === GamePhase.SUMMARY) {
-    const outcome = interviewState.outcome ?? (interviewState.stockPrice >= FAIL_STOCK_PRICE ? "success" : "failure");
+    const outcome =
+      interviewState.outcome ??
+      (interviewState.stockPrice >= FAIL_STOCK_PRICE ? "success" : "failure");
     const isSuccess = outcome === "success";
 
     const worst = interviewState.worstAnswer;
@@ -622,7 +628,9 @@ function App() {
             {isSuccess ? "Segment Survived" : "Cut To Commercial"}
           </h2>
           <p className="text-zinc-400 text-lg md:text-xl mb-8 shrink-0">
-            {isSuccess ? "You survived the interview — barely." : "Confidence collapsed on-air."}
+            {isSuccess
+              ? "You survived the interview — barely."
+              : "Confidence collapsed on-air."}
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 shrink-0">
@@ -664,7 +672,8 @@ function App() {
                 <AlertCircle className="text-yellow-500 shrink-0 mt-1" />
                 <div className="w-full">
                   <h3 className="font-bold text-lg mb-2">
-                    Worst Answer ({worst.category.toUpperCase()} {worst.delta.toFixed(2)})
+                    Worst Answer ({worst.category.toUpperCase()}{" "}
+                    {worst.delta.toFixed(2)})
                   </h3>
                   {worst.questionText && (
                     <div className="text-zinc-300 text-sm mb-2">
