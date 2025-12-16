@@ -309,7 +309,7 @@ export default function App() {
       category: "evasive",
     });
 
-    applyDeltaAndCheck(-2);
+    applyDeltaAndCheck(-0.75);
 
     scheduleNextQuestion();
   };
