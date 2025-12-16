@@ -194,18 +194,20 @@ function App() {
     const tickEveryMs = 200;
 
     timerIntervalRef.current = window.setInterval(() => {
-      setInterviewState((prev) => {
-        // stop ticking if we're not in interview anymore
-        if (phase !== GamePhase.INTERVIEW) return prev;
+  setInterviewState((prev) => {
+    const next = Math.max(0, prev.timeLeftMs - tickEveryMs);
 
-        const next = Math.max(0, prev.timeLeftMs - tickEveryMs);
+    // success if timer hits 0 and not already failed
+    if (next === 0 && prev.stockPrice >= FAIL_STOCK_PRICE) {
+      clearTimers();
+      setPhase(GamePhase.SUMMARY);
+      return { ...prev, timeLeftMs: 0, outcome: "success" };
+    }
 
-        // success if timer hits 0 and not already failed
-        if (next === 0 && prev.stockPrice >= FAIL_STOCK_PRICE) {
-          clearTimers();
-          setPhase(GamePhase.SUMMARY);
-          return { ...prev, timeLeftMs: 0, outcome: "success" };
-        }
+    return { ...prev, timeLeftMs: next };
+  });
+}, tickEveryMs);
+
 
         return { ...prev, timeLeftMs: next };
       });
