@@ -23,7 +23,7 @@ export function scoreAnswer(ctx: ScoreContext): ScoreResult {
   // contradiction override
   if (ctx.isContradiction) {
     return {
-      delta: -3.0,
+      delta: -2.0,
       microcopy: "Contradiction detected",
       flash: "red",
       tick: "down",
@@ -47,7 +47,7 @@ export function scoreAnswer(ctx: ScoreContext): ScoreResult {
   }
 
   if (ctx.category === "evasive") {
-    const base = rand(-2.0, -1.0);
+    const base = rand(-1.5, -0.75);
     const delta = (base - streakPenaltyBonus) * penaltyMultiplier;
     return {
       delta: Number(delta.toFixed(2)),
@@ -59,7 +59,7 @@ export function scoreAnswer(ctx: ScoreContext): ScoreResult {
 
   // bad
   {
-    const base = rand(-4.0, -2.5);
+    const base = rand(-3.0, -2.0);
     const delta = (base - streakPenaltyBonus) * penaltyMultiplier;
     return {
       delta: Number(delta.toFixed(2)),
