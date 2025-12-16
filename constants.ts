@@ -7,8 +7,8 @@ export const INTERVIEW_DURATION_MS = 60_000; // 60 seconds total
 export const SILENCE_MS = 12_000; // if player hasn't answered within 5s of a question
 
 // Question pacing (after an answer resolves)
-export const NEXT_QUESTION_MIN_MS = 6_000;
-export const NEXT_QUESTION_MAX_MS = 8_000;
+export const NEXT_QUESTION_MIN_MS = 10_000;
+export const NEXT_QUESTION_MAX_MS = 14_000;
 
 // Interviewer silence callouts
 export const SILENCE_LINES = [
