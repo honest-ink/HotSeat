@@ -5,11 +5,23 @@ import {
   Message,
   InterviewState,
   GeminiResponse,
+  AnswerCategory,
+  WorstAnswer,
 } from "./types";
-import { INITIAL_STOCK_PRICE, MAX_QUESTIONS } from "./constants";
+import {
+  STARTING_STOCK_PRICE,
+  FAIL_STOCK_PRICE,
+  INTERVIEW_DURATION_MS,
+  SILENCE_MS,
+  NEXT_QUESTION_MIN_MS,
+  NEXT_QUESTION_MAX_MS,
+  SILENCE_LINES,
+} from "./constants";
 import * as GeminiService from "./services/geminiService";
 import BroadcastUI from "./components/BroadcastUI";
 import Studio3D from "./components/Studio3D";
+
+import { scoreAnswer } from "./game-rules";
 
 import {
   Monitor,
@@ -19,6 +31,14 @@ import {
   Calendar,
   RefreshCcw,
 } from "lucide-react";
+
+function randInt(min: number, max: number) {
+  return Math.floor(min + Math.random() * (max - min + 1));
+}
+
+function pickOne<T>(arr: T[]) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
 
 function App() {
   const [phase, setPhase] = useState<GamePhase>(GamePhase.SETUP);
@@ -32,11 +52,20 @@ function App() {
   const [isJournalistTalking, setIsJournalistTalking] = useState(false);
 
   const [interviewState, setInterviewState] = useState<InterviewState>({
-    stockPrice: INITIAL_STOCK_PRICE,
+    stockPrice: STARTING_STOCK_PRICE,
+    lowestPrice: STARTING_STOCK_PRICE,
+    timeLeftMs: INTERVIEW_DURATION_MS,
+    awaitingAnswer: false,
+    evasiveStreak: 0,
     audienceSentiment: 50,
-    questionCount: 0,
-    maxQuestions: MAX_QUESTIONS,
   });
+
+  const lastQuestionRef = useRef<string | undefined>(undefined);
+
+  // ---- timers ----
+  const timerIntervalRef = useRef<number | null>(null);
+  const silenceTimeoutRef = useRef<number | null>(null);
+  const nextQuestionTimeoutRef = useRef<number | null>(null);
 
   // ---- AUDIO (created on mount, started on "Go Live") ----
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -61,10 +90,35 @@ function App() {
     try {
       await audio.play();
     } catch {
-      // If a browser blocks playback for any reason, we just skip.
-      // The "Go Live" click normally satisfies user-gesture rules.
+      // ignore autoplay blocks
     }
   };
+
+  const stopAudio = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.pause();
+    audio.currentTime = 0;
+  };
+
+  const clearTimers = () => {
+    if (timerIntervalRef.current) {
+      window.clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
+    if (silenceTimeoutRef.current) {
+      window.clearTimeout(silenceTimeoutRef.current);
+      silenceTimeoutRef.current = null;
+    }
+    if (nextQuestionTimeoutRef.current) {
+      window.clearTimeout(nextQuestionTimeoutRef.current);
+      nextQuestionTimeoutRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => clearTimers();
+  }, []);
   // --------------------------------------------------------
 
   const handleSetupSubmit = (e: React.FormEvent) => {
@@ -75,80 +129,342 @@ function App() {
   };
 
   const startInterview = async () => {
+    // reset state for a clean run
+    clearTimers();
+    setMessages([]);
+    lastQuestionRef.current = undefined;
+
+    setInterviewState({
+      stockPrice: STARTING_STOCK_PRICE,
+      lowestPrice: STARTING_STOCK_PRICE,
+      timeLeftMs: INTERVIEW_DURATION_MS,
+      awaitingAnswer: false,
+      evasiveStreak: 0,
+      audienceSentiment: 50,
+      outcome: undefined,
+      worstAnswer: undefined,
+      startedAtMs: undefined,
+      questionAskedAtMs: undefined,
+    });
+
     setPhase(GamePhase.INTRO);
 
-    // Start music only after the user clicks "Go Live"
     await startAudio();
 
-    setTimeout(async () => {
+    // Keep your 3s intro screen, but don't start the timer until the first question lands.
+    window.setTimeout(async () => {
       setPhase(GamePhase.INTERVIEW);
       setIsLoading(true);
 
-      const openingResponse = await GeminiService.initInterview(company);
-      addMessage("journalist", openingResponse.text, openingResponse);
+      const opening = await GeminiService.initInterview(company);
+
+      // first journalist message = first question delivered
+      postJournalistLine(opening.text, {
+        category: undefined,
+        microcopy: undefined,
+        stockImpact: undefined,
+        flash: undefined,
+        tick: undefined,
+      });
+
+      // start timer + mark awaiting answer + start silence watchdog
+      beginInterviewClock();
+      markQuestionAsked(opening.text);
 
       setIsLoading(false);
     }, 3000);
   };
 
-  const addMessage = (
-    sender: "user" | "journalist",
-    text: string,
-    data?: GeminiResponse
-  ) => {
-    if (sender === "journalist") {
-      setIsJournalistTalking(true);
-      setTimeout(
-        () => setIsJournalistTalking(false),
-        Math.min(text.length * 50, 3000)
-      );
+  const beginInterviewClock = () => {
+    setInterviewState((prev) => {
+      // already started
+      if (prev.startedAtMs) return prev;
+
+      const startedAtMs = Date.now();
+      return {
+        ...prev,
+        startedAtMs,
+        timeLeftMs: INTERVIEW_DURATION_MS,
+        awaitingAnswer: true,
+      };
+    });
+
+    if (timerIntervalRef.current) return;
+
+    const tickEveryMs = 200;
+
+    timerIntervalRef.current = window.setInterval(() => {
+      setInterviewState((prev) => {
+        const next = Math.max(0, prev.timeLeftMs - tickEveryMs);
+
+        // success if timer hits 0 and not already failed
+        if (next === 0 && prev.stockPrice >= FAIL_STOCK_PRICE) {
+          clearTimers();
+          setPhase(GamePhase.SUMMARY);
+          return { ...prev, timeLeftMs: 0, outcome: "success" };
+        }
+
+        return { ...prev, timeLeftMs: next };
+      });
+    }, tickEveryMs);
+  };
+
+  const markQuestionAsked = (questionText: string) => {
+    lastQuestionRef.current = questionText;
+
+    // clear any previous silence timer
+    if (silenceTimeoutRef.current) {
+      window.clearTimeout(silenceTimeoutRef.current);
+      silenceTimeoutRef.current = null;
     }
 
-    const newMessage: Message = {
+    setInterviewState((prev) => ({
+      ...prev,
+      awaitingAnswer: true,
+      questionAskedAtMs: Date.now(),
+    }));
+
+    silenceTimeoutRef.current = window.setTimeout(() => {
+      // if still waiting, apply silence penalty and advance
+      setInterviewState((prev) => {
+        if (!prev.awaitingAnswer) return prev;
+        return prev;
+      });
+
+      handleSilence();
+    }, SILENCE_MS);
+  };
+
+  const postMessage = (msg: Message) => {
+    setMessages((prev) => [...prev, msg]);
+  };
+
+  const postJournalistLine = (
+    text: string,
+    opts?: {
+      stockImpact?: number;
+      microcopy?: string;
+      flash?: "red";
+      tick?: "up" | "down";
+      category?: AnswerCategory;
+    }
+  ) => {
+    setIsJournalistTalking(true);
+    window.setTimeout(
+      () => setIsJournalistTalking(false),
+      Math.min(text.length * 50, 3000)
+    );
+
+    postMessage({
       id: Date.now().toString(),
-      sender,
+      sender: "journalist",
       text,
-      sentiment: data?.sentiment,
-      stockImpact: data?.stockChange,
-    };
+      stockImpact: opts?.stockImpact,
+      microcopy: opts?.microcopy,
+      flash: opts?.flash,
+      tick: opts?.tick,
+      category: opts?.category,
+    });
+  };
 
-    setMessages((prev) => [...prev, newMessage]);
+  const postUserLine = (text: string) => {
+    postMessage({
+      id: Date.now().toString(),
+      sender: "user",
+      text,
+    });
+  };
 
-    if (!data) return;
-
+  const applyDeltaAndCheck = (delta: number, worst?: WorstAnswer) => {
     setInterviewState((prev) => {
-      const newStock = Math.max(0, prev.stockPrice + (data.stockChange ?? 0));
-      let newSentiment = prev.audienceSentiment;
+      const nextPrice = Number((prev.stockPrice + delta).toFixed(2));
+      const clamped = Math.max(0, nextPrice);
+      const lowestPrice = Math.min(prev.lowestPrice, clamped);
 
-      if (data.sentiment === "positive") newSentiment += 10;
-      if (data.sentiment === "negative") newSentiment -= 10;
+      let worstAnswer = prev.worstAnswer;
+      if (worst && (worstAnswer == null || worst.delta > worstAnswer.delta)) {
+        // "worst" has negative delta; smaller means worse (e.g. -4 < -2).
+        worstAnswer = worst;
+      }
 
-      const nextQuestionCount =
-        sender === "journalist" ? prev.questionCount + 1 : prev.questionCount;
+      // cosmetic sentiment (optional)
+      let audienceSentiment = prev.audienceSentiment;
+      if (delta > 0) audienceSentiment += 6;
+      if (delta < 0) audienceSentiment -= 8;
+      audienceSentiment = Math.max(0, Math.min(100, audienceSentiment));
 
-      if (data.isInterviewOver || nextQuestionCount >= MAX_QUESTIONS) {
-        setTimeout(() => setPhase(GamePhase.SUMMARY), 3000);
+      // failure condition
+      if (clamped < FAIL_STOCK_PRICE) {
+        clearTimers();
+        stopAudio();
+        setPhase(GamePhase.SUMMARY);
+        return {
+          ...prev,
+          stockPrice: clamped,
+          lowestPrice,
+          audienceSentiment,
+          awaitingAnswer: false,
+          outcome: "failure",
+          worstAnswer,
+        };
       }
 
       return {
         ...prev,
-        stockPrice: newStock,
-        audienceSentiment: Math.min(100, Math.max(0, newSentiment)),
-        questionCount: nextQuestionCount,
+        stockPrice: clamped,
+        lowestPrice,
+        audienceSentiment,
+        worstAnswer,
       };
     });
   };
 
-  const handleUserResponse = async (text: string) => {
-    addMessage("user", text);
+  const scheduleNextQuestion = () => {
+    if (nextQuestionTimeoutRef.current) {
+      window.clearTimeout(nextQuestionTimeoutRef.current);
+      nextQuestionTimeoutRef.current = null;
+    }
+
+    const delay = randInt(NEXT_QUESTION_MIN_MS, NEXT_QUESTION_MAX_MS);
+
+    nextQuestionTimeoutRef.current = window.setTimeout(async () => {
+      setIsLoading(true);
+
+      // Ask Gemini for the next question by sending an empty-ish nudge.
+      // If your backend supports a dedicated "next question" endpoint, swap it in.
+      const response = await GeminiService.sendUserAnswer("[NEXT_QUESTION]");
+
+      postJournalistLine(response.text);
+
+      markQuestionAsked(response.text);
+      setIsLoading(false);
+    }, delay);
+  };
+
+  const resolveAnswer = async (userText: string) => {
+    // stop silence watchdog
+    if (silenceTimeoutRef.current) {
+      window.clearTimeout(silenceTimeoutRef.current);
+      silenceTimeoutRef.current = null;
+    }
+
+    setInterviewState((prev) => ({ ...prev, awaitingAnswer: false }));
+
     setIsLoading(true);
 
-    const response = await GeminiService.sendUserAnswer(text);
+    const response = await GeminiService.sendUserAnswer(userText);
 
-    setTimeout(() => {
-      addMessage("journalist", response.text, response);
-      setIsLoading(false);
-    }, 1000 + Math.random() * 1000);
+    // compute delta using your rules
+    const ctx = {
+      category: response.category,
+      isContradiction: response.isContradiction,
+      evasiveStreakBefore: interviewState.evasiveStreak,
+      timeLeftMs: interviewState.timeLeftMs,
+    };
+
+    const scored = scoreAnswer(ctx);
+
+    // update evasive streak + apply delta
+    setInterviewState((prev) => ({
+      ...prev,
+      evasiveStreak: scored.nextEvasiveStreak,
+    }));
+
+    const worst: WorstAnswer | undefined =
+      scored.delta < 0
+        ? {
+            userText,
+            questionText: lastQuestionRef.current,
+            category: response.isContradiction ? "bad" : response.category,
+            delta: scored.delta,
+            reason: response.reason,
+            atTimeLeftMs: interviewState.timeLeftMs,
+          }
+        : undefined;
+
+    // journalist replies with next question text (from Gemini)
+    postJournalistLine(response.text, {
+      stockImpact: scored.delta,
+      microcopy: scored.microcopy,
+      flash: scored.flash,
+      tick: scored.tick,
+      category: response.category,
+    });
+
+    applyDeltaAndCheck(scored.delta, worst);
+
+    setIsLoading(false);
+
+    // if game still running, schedule next question
+    setInterviewState((prev) => {
+      const stillRunning =
+        prev.timeLeftMs > 0 && prev.stockPrice >= FAIL_STOCK_PRICE;
+      if (stillRunning) scheduleNextQuestion();
+      return prev;
+    });
+  };
+
+  const handleUserResponse = async (text: string) => {
+    // only accept if awaiting answer + not loading + still in interview
+    if (phase !== GamePhase.INTERVIEW) return;
+
+    setInterviewState((prev) => {
+      if (!prev.awaitingAnswer) return prev;
+      return prev;
+    });
+
+    postUserLine(text);
+    await resolveAnswer(text);
+  };
+
+  const handleSilence = async () => {
+    if (phase !== GamePhase.INTERVIEW) return;
+
+    // If we’re no longer awaiting an answer, ignore.
+    let shouldApply = false;
+
+    setInterviewState((prev) => {
+      if (prev.awaitingAnswer) shouldApply = true;
+      return prev;
+    });
+
+    if (!shouldApply) return;
+
+    // silence = evasive + fixed -2.0
+    const line = pickOne(SILENCE_LINES);
+
+    postJournalistLine(line, {
+      stockImpact: -0.7,
+      microcopy: "CEO fails to respond",
+      flash: "red",
+      tick: "down",
+      category: "evasive",
+    });
+
+    // apply compounding streak: silence counts as evasive
+    setInterviewState((prev) => ({
+      ...prev,
+      awaitingAnswer: false,
+      evasiveStreak: prev.evasiveStreak + 1,
+    }));
+
+    const worst: WorstAnswer = {
+      userText: "(no response)",
+      questionText: lastQuestionRef.current,
+      category: "evasive",
+      delta: -2.0,
+      atTimeLeftMs: interviewState.timeLeftMs,
+    };
+
+    applyDeltaAndCheck(-2.0, worst);
+
+    // schedule next question if still alive
+    setInterviewState((prev) => {
+      const stillRunning =
+        prev.timeLeftMs > 0 && prev.stockPrice >= FAIL_STOCK_PRICE;
+      if (stillRunning) scheduleNextQuestion();
+      return prev;
+    });
   };
 
   // SETUP
@@ -169,10 +485,10 @@ function App() {
               </div>
 
               <p className="text-zinc-400 text-base md:text-lg">
-                You are about to go live on the nation&apos;s toughest
-                business news show. Every answer moves the market. Keep
-                your company's share price above 95.00 for 60 seconds.
-                Fail, and the board will be calling for your head.
+                You’re live on the country’s toughest business news show. Every
+                answer moves the market. Keep your company’s share price above
+                95.00 for 60 seconds. Fail, and the board will be calling for
+                your head.
               </p>
             </div>
 
@@ -285,7 +601,12 @@ function App() {
 
   // SUMMARY
   if (phase === GamePhase.SUMMARY) {
-    const isSuccess = interviewState.stockPrice >= 100;
+    const outcome =
+      interviewState.outcome ??
+      (interviewState.stockPrice >= FAIL_STOCK_PRICE ? "success" : "failure");
+    const isSuccess = outcome === "success";
+
+    const worst = interviewState.worstAnswer;
 
     return (
       <div className="fixed inset-0 bg-black text-white flex items-center justify-center p-4 font-sans z-50 overflow-hidden">
@@ -296,7 +617,7 @@ function App() {
           <div className="shrink-0 flex justify-center">
             <div
               className={`inline-flex items-center justify-center w-20 h-20 rounded-full mb-6 ${
-                isSuccess ? "bg-green-500 text-black" : "bg-red-500 text-white"
+                isSuccess ? "bg-yellow-500 text-black" : "bg-red-500 text-white"
               }`}
             >
               <Monitor size={40} />
@@ -304,51 +625,68 @@ function App() {
           </div>
 
           <h2 className="text-3xl md:text-5xl font-black mb-2 uppercase tracking-tight shrink-0">
-            Segment Over
+            {isSuccess ? "Segment Survived" : "Cut To Commercial"}
           </h2>
           <p className="text-zinc-400 text-lg md:text-xl mb-8 shrink-0">
-            The cameras are off. Here is the damage report.
+            {isSuccess
+              ? "You survived the interview — barely."
+              : "Confidence collapsed on-air."}
           </p>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8 shrink-0">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 shrink-0">
             <div className="bg-black/40 p-6 rounded-xl border border-zinc-800">
               <div className="text-zinc-500 text-sm uppercase font-bold mb-1">
-                Final Stock Price
+                Starting Price
+              </div>
+              <div className="text-3xl font-mono font-bold">
+                {STARTING_STOCK_PRICE.toFixed(2)}
+              </div>
+            </div>
+
+            <div className="bg-black/40 p-6 rounded-xl border border-zinc-800">
+              <div className="text-zinc-500 text-sm uppercase font-bold mb-1">
+                Lowest Price
+              </div>
+              <div className="text-3xl font-mono font-bold text-white">
+                {interviewState.lowestPrice.toFixed(2)}
+              </div>
+            </div>
+
+            <div className="bg-black/40 p-6 rounded-xl border border-zinc-800">
+              <div className="text-zinc-500 text-sm uppercase font-bold mb-1">
+                Final Price
               </div>
               <div
-                className={`text-4xl font-mono font-bold ${
-                  isSuccess ? "text-green-400" : "text-red-400"
+                className={`text-3xl font-mono font-bold ${
+                  isSuccess ? "text-yellow-400" : "text-red-400"
                 }`}
               >
-                ${interviewState.stockPrice.toFixed(2)}
-              </div>
-            </div>
-
-            <div className="bg-black/40 p-6 rounded-xl border border-zinc-800">
-              <div className="text-zinc-500 text-sm uppercase font-bold mb-1">
-                Audience Sentiment
-              </div>
-              <div className="text-4xl font-mono font-bold text-white">
-                {interviewState.audienceSentiment}%
+                {interviewState.stockPrice.toFixed(2)}
               </div>
             </div>
           </div>
 
-          <div className="bg-zinc-800/50 p-6 rounded-xl text-left mb-8 border border-zinc-700/50 shrink-0">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="text-yellow-500 shrink-0 mt-1" />
-              <div>
-                <h3 className="font-bold text-lg mb-1">
-                  Analyst Rating: {isSuccess ? "STRONG BUY" : "SELL"}
-                </h3>
-                <p className="text-zinc-400 leading-relaxed">
-                  {isSuccess
-                    ? "You handled the pressure well. Investors are confident in your leadership despite the tough questioning."
-                    : "Perception is reality—and yours just tanked. Don't go back on air unprepared. Speak with Honest Ink to control your narrative."}
-                </p>
+          {worst && (
+            <div className="bg-zinc-800/50 p-6 rounded-xl text-left mb-8 border border-zinc-700/50 shrink-0">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="text-yellow-500 shrink-0 mt-1" />
+                <div className="w-full">
+                  <h3 className="font-bold text-lg mb-2">
+                    Worst Answer ({worst.category.toUpperCase()}{" "}
+                    {worst.delta.toFixed(2)})
+                  </h3>
+                  {worst.questionText && (
+                    <div className="text-zinc-300 text-sm mb-2">
+                      <span className="font-bold">Q:</span> {worst.questionText}
+                    </div>
+                  )}
+                  <div className="text-zinc-300 text-sm">
+                    <span className="font-bold">A:</span> {worst.userText}
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           <div className="shrink-0 pb-2 flex flex-col items-center gap-4 w-full">
             <a
