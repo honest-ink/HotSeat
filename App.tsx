@@ -36,6 +36,11 @@ function pickOne<T>(arr: T[]) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+// ADDED: small clamp helper for stock moves
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
 function App() {
   const [phase, setPhase] = useState<GamePhase>(GamePhase.SETUP);
   const [company, setCompany] = useState<CompanyProfile>({
@@ -267,6 +272,10 @@ function App() {
 
     const scored = scoreAnswer(ctx);
 
+    // ADDED: use model stockChange as a bounded base move, then add rules delta
+    const base = clamp(Number(response.stockChange ?? 0), -1.5, 1.5);
+    const finalDelta = clamp(base + scored.delta, -3, 3);
+
     // update evasive streak + apply delta
     setInterviewState((prev) => ({
       ...prev,
@@ -274,12 +283,12 @@ function App() {
     }));
 
     const worst: WorstAnswer | undefined =
-      scored.delta < 0
+      finalDelta < 0
         ? {
             userText,
             questionText: lastQuestionRef.current,
             category: response.isContradiction ? "bad" : response.category,
-            delta: scored.delta,
+            delta: finalDelta,
             reason: response.reason,
             atTimeLeftMs: 0,
           }
@@ -287,14 +296,14 @@ function App() {
 
     // journalist replies (your current backend returns a line here)
     postJournalistLine(response.text, {
-      stockImpact: scored.delta,
+      stockImpact: finalDelta,
       microcopy: scored.microcopy,
       flash: scored.flash,
       tick: scored.tick,
       category: response.category,
     });
 
-    applyDeltaAndCheck(scored.delta, worst);
+    applyDeltaAndCheck(finalDelta, worst);
 
     setIsLoading(false);
 
@@ -359,10 +368,9 @@ function App() {
               </div>
 
               <p className="text-zinc-400 text-base md:text-lg">
-                You’re live on the country’s toughest business news show. Every
-                answer moves the market. Keep your company’s share price above
-                95.00 for 60 seconds. Fail, and the board will be calling for
-                your head.
+                You’re live on the country’s toughest business news show. 
+                Get through five questions without your shareprice dipping
+                below 95.00 or the board will be calling for your head.
               </p>
             </div>
 
