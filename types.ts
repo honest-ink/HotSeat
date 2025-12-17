@@ -22,13 +22,17 @@ export interface Message {
 export interface InterviewState {
   stockPrice: number;
   audienceSentiment: number; // 0-100
-  questionCount: number;
-  maxQuestions: number;
+
+  // Turn-based interview progress
+  questionCount: number; // current turn (1..maxQuestions)
+  maxQuestions: number;  // total turns (e.g. 5)
 }
 
 export interface GeminiResponse {
   text: string;
   sentiment: 'positive' | 'negative' | 'neutral';
   stockChange: number;
+
+  // Turn-based completion
   isInterviewOver: boolean;
 }
