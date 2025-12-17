@@ -64,7 +64,6 @@ export function scoreAnswer(ctx: ScoreContext): ScoreResult {
     const base = rand(-0.8, -0.3);
     let delta = (base - streakPenaltyBonus) * penaltyMultiplier;
 
-    // Metrics bonus: if the user provided concrete numbers/metrics, soften evasive penalties
     if (hasMetrics(ctx.answerText)) {
       delta += 0.8;
     }
