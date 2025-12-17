@@ -5,6 +5,9 @@ export type ScoreContext = {
   isContradiction: boolean;
   evasiveStreakBefore: number;
   timeLeftMs: number;
+
+  // Metrics bonus (optional)
+  answerText?: string;
 };
 
 export type ScoreResult = {
@@ -17,6 +20,17 @@ export type ScoreResult = {
 
 function rand(min: number, max: number) {
   return min + Math.random() * (max - min);
+}
+
+// Metrics heuristic: any number, % sign, currency, or common SaaS/unit-econ terms
+function hasMetrics(text?: string) {
+  if (!text) return false;
+  return (
+    /\d/.test(text) ||
+    /%/.test(text) ||
+    /[$€£]/.test(text) ||
+    /\b(arr|mrr|cac|ltv|churn|margin|runway|growth|gmv|ebitda)\b/i.test(text)
+  );
 }
 
 export function scoreAnswer(ctx: ScoreContext): ScoreResult {
@@ -48,7 +62,13 @@ export function scoreAnswer(ctx: ScoreContext): ScoreResult {
 
   if (ctx.category === "evasive") {
     const base = rand(-1.5, -0.75);
-    const delta = (base - streakPenaltyBonus) * penaltyMultiplier;
+    let delta = (base - streakPenaltyBonus) * penaltyMultiplier;
+
+    // Metrics bonus: if the user provided concrete numbers/metrics, soften evasive penalties
+    if (hasMetrics(ctx.answerText)) {
+      delta += 1.2;
+    }
+
     return {
       delta: Number(delta.toFixed(2)),
       microcopy: "Investors unconvinced",
