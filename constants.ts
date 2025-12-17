@@ -2,13 +2,13 @@
 export const STARTING_STOCK_PRICE = 100.0;
 export const FAIL_STOCK_PRICE = 95.0;
 
-// Interview timing
-export const INTERVIEW_DURATION_MS = 60_000; // 60 seconds total
-export const SILENCE_MS = 12_000; // if player hasn't answered within 5s of a question
+// Interview structure (turn-based)
+export const TOTAL_QUESTIONS = 5;
+export const STARTING_TURN_INDEX = 0;
 
-// Question pacing (after an answer resolves)
-export const NEXT_QUESTION_MIN_MS = 10_000;
-export const NEXT_QUESTION_MAX_MS = 14_000;
+// Question pacing
+// Turn-based, so no timing delays between questions
+export const QUESTIONS_PER_TURN = 1;
 
 // Interviewer silence callouts
 export const SILENCE_LINES = [
