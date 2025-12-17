@@ -485,13 +485,13 @@ function App() {
               </div>
 
               <p className="text-zinc-400 text-base md:text-lg">
-                You’re live on the country’s toughest business news show. Every
-                answer moves the market. Keep your company’s share price above
-                95.00 for 60 seconds. Fail, and the board will be calling for
-                your head.
+                You’re live on the country’s toughest business news show. Every answer moves
+                the market. Keep your company’s share price{" "}
+                <span className="text-yellow-400 font-semibold"> above 95.00 for 60 seconds
+                </span>{" "} or the board will be calling for your head.
               </p>
             </div>
-
+            
             <div className="px-6 md:px-8 flex-1 overflow-y-auto">
               <form onSubmit={handleSetupSubmit} className="space-y-5 pb-6">
                 <div>
