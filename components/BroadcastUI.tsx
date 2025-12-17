@@ -4,7 +4,7 @@ import {
   TrendingUp,
   TrendingDown,
   AlertCircle,
-  Timer,
+  Mic,
 } from "lucide-react";
 import { Message, InterviewState } from "../types";
 import { FAIL_STOCK_PRICE, NEWS_TICKER_HEADLINES } from "../constants";
@@ -15,11 +15,6 @@ interface BroadcastUIProps {
   onSendMessage: (text: string) => void;
   isLoading: boolean;
   companyName: string;
-}
-
-function formatSeconds(ms: number) {
-  const s = Math.max(0, Math.ceil(ms / 1000));
-  return s.toString().padStart(2, "0");
 }
 
 const BroadcastUI: React.FC<BroadcastUIProps> = ({
@@ -54,7 +49,13 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
 
   const tickerSymbol = companyName.substring(0, 4).toUpperCase() || "XXXX";
 
-  const timeLeft = formatSeconds(state.timeLeftMs);
+  // Progress (answered / total)
+  const answered = state.awaitingAnswer
+    ? Math.max(0, state.questionCount - 1)
+    : state.questionCount;
+
+  const progressLabel = `${Math.max(0, Math.min(answered, state.maxQuestions))}/${state.maxQuestions}`;
+
   const isFailZone = state.stockPrice < FAIL_STOCK_PRICE;
   const isNearFail = state.stockPrice < FAIL_STOCK_PRICE + 1.5; // UI warning band
 
@@ -73,13 +74,13 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
           </div>
         </div>
 
-        {/* Right cluster: Timer + Stock */}
+        {/* Right cluster: Progress + Stock */}
         <div className="flex flex-col items-end gap-2">
-          {/* Timer */}
+          {/* Progress */}
           <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md text-white px-3 py-2 rounded-lg border border-white/10 shadow-2xl">
-            <Timer size={16} className={state.timeLeftMs <= 15_000 ? "text-red-400" : "text-white"} />
+            <Mic size={16} className="text-white" />
             <div className="font-mono font-bold text-lg tracking-widest">
-              {timeLeft}s
+              {progressLabel}
             </div>
           </div>
 
