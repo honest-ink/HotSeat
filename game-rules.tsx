@@ -53,7 +53,7 @@ export function scoreAnswer(ctx: ScoreContext): ScoreResult {
 
   if (ctx.category === "good") {
     return {
-      delta: Number(rand(0.3, 0.9).toFixed(2)),
+      delta: Number(rand(0.6, 1.1).toFixed(2)),
       microcopy: "Market reassured",
       tick: "up",
       nextEvasiveStreak: 0,
