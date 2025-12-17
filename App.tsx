@@ -11,11 +11,7 @@ import {
 import {
   STARTING_STOCK_PRICE,
   FAIL_STOCK_PRICE,
-  INTERVIEW_DURATION_MS,
-  SILENCE_MS,
-  NEXT_QUESTION_MIN_MS,
-  NEXT_QUESTION_MAX_MS,
-  SILENCE_LINES,
+  TOTAL_QUESTIONS,
 } from "./constants";
 import * as GeminiService from "./services/geminiService";
 import BroadcastUI from "./components/BroadcastUI";
@@ -54,18 +50,20 @@ function App() {
   const [interviewState, setInterviewState] = useState<InterviewState>({
     stockPrice: STARTING_STOCK_PRICE,
     lowestPrice: STARTING_STOCK_PRICE,
-    timeLeftMs: INTERVIEW_DURATION_MS,
     awaitingAnswer: false,
     evasiveStreak: 0,
     audienceSentiment: 50,
+    outcome: undefined,
+    worstAnswer: undefined,
+    startedAtMs: undefined,
+    questionAskedAtMs: undefined,
+
+    // turn-based
+    questionCount: 0,
+    maxQuestions: TOTAL_QUESTIONS,
   });
 
   const lastQuestionRef = useRef<string | undefined>(undefined);
-
-  // ---- timers ----
-  const timerIntervalRef = useRef<number | null>(null);
-  const silenceTimeoutRef = useRef<number | null>(null);
-  const nextQuestionTimeoutRef = useRef<number | null>(null);
 
   // ---- AUDIO (created on mount, started on "Go Live") ----
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -101,25 +99,8 @@ function App() {
     audio.currentTime = 0;
   };
 
-  const clearTimers = () => {
-    if (timerIntervalRef.current) {
-      window.clearInterval(timerIntervalRef.current);
-      timerIntervalRef.current = null;
-    }
-    if (silenceTimeoutRef.current) {
-      window.clearTimeout(silenceTimeoutRef.current);
-      silenceTimeoutRef.current = null;
-    }
-    if (nextQuestionTimeoutRef.current) {
-      window.clearTimeout(nextQuestionTimeoutRef.current);
-      nextQuestionTimeoutRef.current = null;
-    }
-  };
-
-  useEffect(() => {
-    return () => clearTimers();
-  }, []);
-  // --------------------------------------------------------
+  // timer cleanup no longer needed, but keep a no-op for existing calls
+  const clearTimers = () => {};
 
   const handleSetupSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -137,7 +118,6 @@ function App() {
     setInterviewState({
       stockPrice: STARTING_STOCK_PRICE,
       lowestPrice: STARTING_STOCK_PRICE,
-      timeLeftMs: INTERVIEW_DURATION_MS,
       awaitingAnswer: false,
       evasiveStreak: 0,
       audienceSentiment: 50,
@@ -145,13 +125,17 @@ function App() {
       worstAnswer: undefined,
       startedAtMs: undefined,
       questionAskedAtMs: undefined,
+
+      // turn-based
+      questionCount: 0,
+      maxQuestions: TOTAL_QUESTIONS,
     });
 
     setPhase(GamePhase.INTRO);
 
     await startAudio();
 
-    // Keep your 3s intro screen, but don't start the timer until the first question lands.
+    // Keep your 3s intro screen
     window.setTimeout(async () => {
       setPhase(GamePhase.INTERVIEW);
       setIsLoading(true);
@@ -167,72 +151,19 @@ function App() {
         tick: undefined,
       });
 
-      // start timer + mark awaiting answer + start silence watchdog
-      beginInterviewClock();
-      markQuestionAsked(opening.text);
+      // mark first turn as active
+      lastQuestionRef.current = opening.text;
+      setInterviewState((prev) => ({
+        ...prev,
+        startedAtMs: Date.now(),
+        questionAskedAtMs: Date.now(),
+        awaitingAnswer: true,
+        questionCount: 1,
+        maxQuestions: TOTAL_QUESTIONS,
+      }));
 
       setIsLoading(false);
     }, 3000);
-  };
-
-  const beginInterviewClock = () => {
-    setInterviewState((prev) => {
-      // already started
-      if (prev.startedAtMs) return prev;
-
-      const startedAtMs = Date.now();
-      return {
-        ...prev,
-        startedAtMs,
-        timeLeftMs: INTERVIEW_DURATION_MS,
-        awaitingAnswer: true,
-      };
-    });
-
-    if (timerIntervalRef.current) return;
-
-    const tickEveryMs = 200;
-
-    timerIntervalRef.current = window.setInterval(() => {
-      setInterviewState((prev) => {
-        const next = Math.max(0, prev.timeLeftMs - tickEveryMs);
-
-        // success if timer hits 0 and not already failed
-        if (next === 0 && prev.stockPrice >= FAIL_STOCK_PRICE) {
-          clearTimers();
-          setPhase(GamePhase.SUMMARY);
-          return { ...prev, timeLeftMs: 0, outcome: "success" };
-        }
-
-        return { ...prev, timeLeftMs: next };
-      });
-    }, tickEveryMs);
-  };
-
-  const markQuestionAsked = (questionText: string) => {
-    lastQuestionRef.current = questionText;
-
-    // clear any previous silence timer
-    if (silenceTimeoutRef.current) {
-      window.clearTimeout(silenceTimeoutRef.current);
-      silenceTimeoutRef.current = null;
-    }
-
-    setInterviewState((prev) => ({
-      ...prev,
-      awaitingAnswer: true,
-      questionAskedAtMs: Date.now(),
-    }));
-
-    silenceTimeoutRef.current = window.setTimeout(() => {
-      // if still waiting, apply silence penalty and advance
-      setInterviewState((prev) => {
-        if (!prev.awaitingAnswer) return prev;
-        return prev;
-      });
-
-      handleSilence();
-    }, SILENCE_MS);
   };
 
   const postMessage = (msg: Message) => {
@@ -319,35 +250,7 @@ function App() {
     });
   };
 
-  const scheduleNextQuestion = () => {
-    if (nextQuestionTimeoutRef.current) {
-      window.clearTimeout(nextQuestionTimeoutRef.current);
-      nextQuestionTimeoutRef.current = null;
-    }
-
-    const delay = randInt(NEXT_QUESTION_MIN_MS, NEXT_QUESTION_MAX_MS);
-
-    nextQuestionTimeoutRef.current = window.setTimeout(async () => {
-      setIsLoading(true);
-
-      // Ask Gemini for the next question by sending an empty-ish nudge.
-      // If your backend supports a dedicated "next question" endpoint, swap it in.
-      const response = await GeminiService.sendUserAnswer("[NEXT_QUESTION]");
-
-      postJournalistLine(response.text);
-
-      markQuestionAsked(response.text);
-      setIsLoading(false);
-    }, delay);
-  };
-
   const resolveAnswer = async (userText: string) => {
-    // stop silence watchdog
-    if (silenceTimeoutRef.current) {
-      window.clearTimeout(silenceTimeoutRef.current);
-      silenceTimeoutRef.current = null;
-    }
-
     setInterviewState((prev) => ({ ...prev, awaitingAnswer: false }));
 
     setIsLoading(true);
@@ -359,7 +262,7 @@ function App() {
       category: response.category,
       isContradiction: response.isContradiction,
       evasiveStreakBefore: interviewState.evasiveStreak,
-      timeLeftMs: interviewState.timeLeftMs,
+      timeLeftMs: undefined,
     };
 
     const scored = scoreAnswer(ctx);
@@ -378,11 +281,11 @@ function App() {
             category: response.isContradiction ? "bad" : response.category,
             delta: scored.delta,
             reason: response.reason,
-            atTimeLeftMs: interviewState.timeLeftMs,
+            atTimeLeftMs: 0,
           }
         : undefined;
 
-    // journalist replies with next question text (from Gemini)
+    // journalist replies (your current backend returns a line here)
     postJournalistLine(response.text, {
       stockImpact: scored.delta,
       microcopy: scored.microcopy,
@@ -395,12 +298,33 @@ function App() {
 
     setIsLoading(false);
 
-    // if game still running, schedule next question
+    // turn-based progression + success condition
     setInterviewState((prev) => {
-      const stillRunning =
-        prev.timeLeftMs > 0 && prev.stockPrice >= FAIL_STOCK_PRICE;
-      if (stillRunning) scheduleNextQuestion();
-      return prev;
+      // If we already failed, phase is SUMMARY and awaitingAnswer is false.
+      if (prev.outcome === "failure") return prev;
+
+      // If we just answered the last question, end the interview successfully.
+      if (prev.questionCount >= prev.maxQuestions) {
+        clearTimers();
+        stopAudio();
+        setPhase(GamePhase.SUMMARY);
+        return {
+          ...prev,
+          awaitingAnswer: false,
+          outcome: "success",
+        };
+      }
+
+      // Otherwise, advance to next question turn.
+      // The backend response text above is assumed to contain the next prompt.
+      lastQuestionRef.current = response.text;
+
+      return {
+        ...prev,
+        awaitingAnswer: true,
+        questionCount: prev.questionCount + 1,
+        questionAskedAtMs: Date.now(),
+      };
     });
   };
 
@@ -415,56 +339,6 @@ function App() {
 
     postUserLine(text);
     await resolveAnswer(text);
-  };
-
-  const handleSilence = async () => {
-    if (phase !== GamePhase.INTERVIEW) return;
-
-    // If we’re no longer awaiting an answer, ignore.
-    let shouldApply = false;
-
-    setInterviewState((prev) => {
-      if (prev.awaitingAnswer) shouldApply = true;
-      return prev;
-    });
-
-    if (!shouldApply) return;
-
-    // silence = evasive + fixed -2.0
-    const line = pickOne(SILENCE_LINES);
-
-    postJournalistLine(line, {
-      stockImpact: -0.7,
-      microcopy: "CEO fails to respond",
-      flash: "red",
-      tick: "down",
-      category: "evasive",
-    });
-
-    // apply compounding streak: silence counts as evasive
-    setInterviewState((prev) => ({
-      ...prev,
-      awaitingAnswer: false,
-      evasiveStreak: prev.evasiveStreak + 1,
-    }));
-
-    const worst: WorstAnswer = {
-      userText: "(no response)",
-      questionText: lastQuestionRef.current,
-      category: "evasive",
-      delta: -2.0,
-      atTimeLeftMs: interviewState.timeLeftMs,
-    };
-
-    applyDeltaAndCheck(-2.0, worst);
-
-    // schedule next question if still alive
-    setInterviewState((prev) => {
-      const stillRunning =
-        prev.timeLeftMs > 0 && prev.stockPrice >= FAIL_STOCK_PRICE;
-      if (stillRunning) scheduleNextQuestion();
-      return prev;
-    });
   };
 
   // SETUP
