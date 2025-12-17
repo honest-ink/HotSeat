@@ -274,7 +274,16 @@ function App() {
 
     // ADDED: use model stockChange as a bounded base move, then add rules delta
     const base = clamp(Number(response.stockChange ?? 0), -1.5, 1.5);
-    const finalDelta = clamp(base + scored.delta, -3, 3);
+    let finalDelta = clamp(base + scored.delta, -3, 3);
+
+    // Guardrail: never punish clear positive signal
+    const hasPositiveSignal =
+    response.sentiment === "positive" ||
+    (response.sentiment === "neutral" && base > 0);
+
+    if (hasPositiveSignal && finalDelta < 0 && !response.isContradiction) {
+    finalDelta = 0;
+    }
 
     // update evasive streak + apply delta
     setInterviewState((prev) => ({
