@@ -37,7 +37,7 @@ export function scoreAnswer(ctx: ScoreContext): ScoreResult {
   // contradiction override
   if (ctx.isContradiction) {
     return {
-      delta: -2.0,
+      delta: -1.5,
       microcopy: "Contradiction detected",
       flash: "red",
       tick: "down",
@@ -46,14 +46,14 @@ export function scoreAnswer(ctx: ScoreContext): ScoreResult {
   }
 
   const inFinal15s = ctx.timeLeftMs <= 15_000;
-  const penaltyMultiplier = inFinal15s ? 1.25 : 1;
+  const penaltyMultiplier = inFinal15s ? 1.1 : 1;
 
-  // streak rule: two evasives in a row => next penalty +0.5
-  const streakPenaltyBonus = ctx.evasiveStreakBefore >= 2 ? 0.5 : 0;
+  // streak rule: two evasives in a row => next penalty +0.3
+  const streakPenaltyBonus = ctx.evasiveStreakBefore >= 2 ? 0.3 : 0;
 
   if (ctx.category === "good") {
     return {
-      delta: Number(rand(0.5, 1.0).toFixed(2)),
+      delta: Number(rand(0.3, 0.9).toFixed(2)),
       microcopy: "Market reassured",
       tick: "up",
       nextEvasiveStreak: 0,
@@ -61,12 +61,12 @@ export function scoreAnswer(ctx: ScoreContext): ScoreResult {
   }
 
   if (ctx.category === "evasive") {
-    const base = rand(-1.5, -0.75);
+    const base = rand(-0.8, -0.3);
     let delta = (base - streakPenaltyBonus) * penaltyMultiplier;
 
     // Metrics bonus: if the user provided concrete numbers/metrics, soften evasive penalties
     if (hasMetrics(ctx.answerText)) {
-      delta += 1.2;
+      delta += 0.8;
     }
 
     return {
@@ -79,7 +79,7 @@ export function scoreAnswer(ctx: ScoreContext): ScoreResult {
 
   // bad
   {
-    const base = rand(-3.0, -2.0);
+    const base = rand(-2.0, -1.2);
     const delta = (base - streakPenaltyBonus) * penaltyMultiplier;
     return {
       delta: Number(delta.toFixed(2)),
