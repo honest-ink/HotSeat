@@ -46,9 +46,11 @@ The JSON structure must be:
 {
   "text": "Your spoken response/question to the guest",
   "sentiment": "positive" | "negative" | "neutral",
-  "stockChange": number,
-  "isInterviewOver": boolean
+  "isInterviewOver": false
 }
+Rules:
+- "sentiment" must match the tone of "text".
+- Always set "isInterviewOver" to false. The client ends the interview.
 `.trim();
 }
 
@@ -85,10 +87,9 @@ app.post("/api/init", async (req, res) => {
           properties: {
             text: { type: Type.STRING },
             sentiment: { type: Type.STRING, enum: ["positive", "negative", "neutral"] },
-            stockChange: { type: Type.NUMBER },
             isInterviewOver: { type: Type.BOOLEAN }
           },
-          required: ["text", "sentiment", "stockChange", "isInterviewOver"]
+          required: ["text", "sentiment", "isInterviewOver"]
         }
       }
     });
@@ -98,7 +99,7 @@ app.post("/api/init", async (req, res) => {
     console.log("[init] session:", sessionId, "company:", company.name);
 
     const first = await chatSession.sendMessage({
-      message: "Start the show. Introduce the guest to the audience and ask the first opening question. Be dramatic."
+      message: "Start the show. Introduce the guest to the audience and ask the first opening question. Be inquisitive."
     });
 
     const parsed = safeParseJson(first.text || "");
@@ -113,7 +114,6 @@ app.post("/api/init", async (req, res) => {
     res.status(500).json({
       text: "Welcome to the show. Tell us about your company.",
       sentiment: "neutral",
-      stockChange: 0,
       isInterviewOver: false
     });
   }
@@ -145,7 +145,6 @@ app.post("/api/chat", async (req, res) => {
     res.status(500).json({
       text: "We seem to be having technical difficulties. Let's move on.",
       sentiment: "neutral",
-      stockChange: -1.5,
       isInterviewOver: false
     });
   }
