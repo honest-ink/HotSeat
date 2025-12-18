@@ -76,6 +76,8 @@ Guidelines:
   - State the issue plainly.
   - Ask one follow-up about mitigation, correction, or accountability.
 
+### Tone of speech
+
 - Challenge claims using numbers, risks, or timelines only when relevant.
 - Never insult, belittle, or moralise.
 - Keep responses punchy and broadcast-ready (usually under 40 words).
