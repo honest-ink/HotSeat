@@ -476,117 +476,110 @@ function App() {
   }
 
   // SUMMARY
-  if (phase === GamePhase.SUMMARY) {
-    const outcome =
-      interviewState.outcome ??
-      (interviewState.stockPrice >= FAIL_STOCK_PRICE ? "success" : "failure");
-    const isSuccess = outcome === "success";
+// SUMMARY
+if (phase === GamePhase.SUMMARY) {
+  const finalPrice = interviewState.stockPrice;
+  const delta = Number((finalPrice - STARTING_STOCK_PRICE).toFixed(2));
+  const isUp = delta >= 0;
 
-    const worst = interviewState.worstAnswer;
+  const head = isUp ? "A STAR IS BORN" : "CUT TO COMMERCIAL";
+  const subhead = isUp
+    ? "The board want to congratulate you"
+    : "Confidence collapsed on air";
 
-    return (
-      <div className="fixed inset-0 bg-black text-white flex items-center justify-center p-4 font-sans z-50 overflow-hidden">
-        <div className="absolute inset-0 bg-red-900/10"></div>
-        <div className="scanlines"></div>
+  const producerNote = isUp
+    ? "The market just responded to your vision. Now, let’s transform that narrative into a content strategy that lands with your ideal clients."
+    : "Your vision is there, but the delivery is getting lost in translation. Let's fix your narrative before the market tunes out for good.";
 
-        <div className="max-w-2xl w-full bg-zinc-900 p-6 md:p-10 rounded-3xl border-2 border-zinc-800 text-center relative z-10 shadow-2xl flex flex-col max-h-[90vh] overflow-y-auto">
-          <div className="shrink-0 flex justify-center">
-            <div
-              className={`inline-flex items-center justify-center w-20 h-20 rounded-full mb-6 ${
-                isSuccess ? "bg-yellow-500 text-black" : "bg-red-500 text-white"
-              }`}
-            >
-              <Monitor size={40} />
-            </div>
-          </div>
+  const ScoreIcon = isUp ? TrendingUp : TrendingDown;
 
-          <h2 className="text-3xl md:text-5xl font-black mb-2 uppercase tracking-tight shrink-0">
-            {isSuccess ? "Segment Survived" : "Cut To Commercial"}
-          </h2>
-          <p className="text-zinc-400 text-lg md:text-xl mb-8 shrink-0">
-            {isSuccess
-              ? "You survived the interview — barely."
-              : "Confidence collapsed on-air."}
-          </p>
+  return (
+    <div className="fixed inset-0 bg-black text-white flex items-center justify-center p-4 font-sans z-50 overflow-hidden">
+      <div className={`absolute inset-0 ${isUp ? "bg-emerald-900/10" : "bg-red-900/10"}`}></div>
+      <div className="scanlines"></div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 shrink-0">
-            <div className="bg-black/40 p-6 rounded-xl border border-zinc-800">
-              <div className="text-zinc-500 text-sm uppercase font-bold mb-1">
-                Starting Price
-              </div>
-              <div className="text-3xl font-mono font-bold">
-                {STARTING_STOCK_PRICE.toFixed(2)}
-              </div>
-            </div>
-
-            <div className="bg-black/40 p-6 rounded-xl border border-zinc-800">
-              <div className="text-zinc-500 text-sm uppercase font-bold mb-1">
-                Lowest Price
-              </div>
-              <div className="text-3xl font-mono font-bold text-white">
-                {interviewState.lowestPrice.toFixed(2)}
-              </div>
-            </div>
-
-            <div className="bg-black/40 p-6 rounded-xl border border-zinc-800">
-              <div className="text-zinc-500 text-sm uppercase font-bold mb-1">
-                Final Price
-              </div>
-              <div
-                className={`text-3xl font-mono font-bold ${
-                  isSuccess ? "text-yellow-400" : "text-red-400"
-                }`}
-              >
-                {interviewState.stockPrice.toFixed(2)}
-              </div>
-            </div>
-          </div>
-
-          {worst && (
-            <div className="bg-zinc-800/50 p-6 rounded-xl text-left mb-8 border border-zinc-700/50 shrink-0">
-              <div className="flex items-start gap-3">
-                <AlertCircle className="text-yellow-500 shrink-0 mt-1" />
-                <div className="w-full">
-                  <h3 className="font-bold text-lg mb-2">
-                    Worst Answer ({worst.category.toUpperCase()}{" "}
-                    {worst.delta.toFixed(2)})
-                  </h3>
-                  {worst.questionText && (
-                    <div className="text-zinc-300 text-sm mb-2">
-                      <span className="font-bold">Q:</span> {worst.questionText}
-                    </div>
-                  )}
-                  <div className="text-zinc-300 text-sm">
-                    <span className="font-bold">A:</span> {worst.userText}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="shrink-0 pb-2 flex flex-col items-center gap-4 w-full">
-            <a
-              href="https://calendar.app.google/F1z9UmnTGLYX3nhk7"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group bg-white hover:bg-yellow-500 text-black font-black uppercase px-8 py-4 rounded-full tracking-widest flex items-center justify-center gap-3 transition-all hover:scale-[1.02] shadow-xl w-full md:w-auto min-w-[300px]"
-            >
-              <Calendar size={20} className="text-zinc-900" />
-              Speak to a Journalist
-            </a>
-
-            <button
-              onClick={() => window.location.reload()}
-              className="text-zinc-600 hover:text-white text-xs font-bold uppercase tracking-[0.2em] flex items-center gap-2 transition-colors py-2"
-            >
-              <RefreshCcw size={12} />
-              Replay Simulation
-            </button>
+      <div className="max-w-2xl w-full bg-zinc-900 p-6 md:p-10 rounded-3xl border-2 border-zinc-800 text-center relative z-10 shadow-2xl flex flex-col max-h-[90vh] overflow-y-auto">
+        <div className="shrink-0 flex justify-center">
+          <div
+            className={`inline-flex items-center justify-center w-20 h-20 rounded-full mb-6 ${
+              isUp ? "bg-emerald-500 text-black" : "bg-red-500 text-white"
+            }`}
+          >
+            <Monitor size={40} />
           </div>
         </div>
+
+        {/* Summary Text */}
+        <h2 className="text-3xl md:text-5xl font-black mb-2 uppercase tracking-tight shrink-0">
+          {head}
+        </h2>
+        <p className="text-zinc-400 text-lg md:text-xl mb-8 shrink-0">
+          {subhead}
+        </p>
+
+        {/* Final Score */}
+        <div className="bg-black/40 p-6 rounded-xl border border-zinc-800 mb-6 shrink-0">
+          <div className="text-zinc-500 text-sm uppercase font-bold mb-2">
+            Final Score
+          </div>
+
+          <div className="flex items-center justify-center gap-3">
+            <ScoreIcon
+              size={22}
+              className={isUp ? "text-emerald-400" : "text-red-400"}
+            />
+            <div
+              className={`text-4xl md:text-5xl font-mono font-bold ${
+                isUp ? "text-emerald-400" : "text-red-400"
+              }`}
+            >
+              {finalPrice.toFixed(2)}
+            </div>
+          </div>
+
+          <div className="mt-3 text-sm font-mono text-zinc-400">
+            {delta >= 0 ? "+" : ""}
+            {delta.toFixed(2)} from {STARTING_STOCK_PRICE.toFixed(2)}
+          </div>
+        </div>
+
+        {/* Producer's Note */}
+        <div className="bg-zinc-800/50 p-6 rounded-xl text-left mb-8 border border-zinc-700/50 shrink-0">
+          <div className="text-zinc-500 text-xs font-bold uppercase mb-2">
+            Producer&apos;s Note
+          </div>
+          <div className="text-zinc-200 text-base leading-relaxed">
+            {producerNote}
+          </div>
+        </div>
+
+        {/* CTA + Replay */}
+        <div className="shrink-0 pb-2 flex flex-col items-center gap-4 w-full">
+          <a
+            href="https://calendar.app.google/F1z9UmnTGLYX3nhk7"
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`group text-black font-black uppercase px-8 py-4 rounded-full tracking-widest flex items-center justify-center gap-3 transition-all hover:scale-[1.02] shadow-xl w-full md:w-auto min-w-[300px] ${
+              isUp ? "bg-emerald-500 hover:bg-emerald-400" : "bg-red-500 hover:bg-red-400"
+            }`}
+          >
+            <Calendar size={20} className="text-zinc-900" />
+            BOOK YOUR EDITORIAL BRIEFING
+          </a>
+
+          <button
+            onClick={() => window.location.reload()}
+            className="text-zinc-600 hover:text-white text-xs font-bold uppercase tracking-[0.2em] flex items-center gap-2 transition-colors py-2"
+          >
+            <RefreshCcw size={12} />
+            Replay
+          </button>
+        </div>
       </div>
-    );
-  }
+    </div>
+  );
+}
+
 
   // INTERVIEW
   return (
