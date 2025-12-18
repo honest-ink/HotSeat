@@ -257,7 +257,7 @@ function App() {
     const scored = scoreAnswer(ctx);
 
     // Market move comes only from your deterministic rules now
-    let finalDelta = clamp(scored.delta, -3, 3);
+    let finalDelta = clamp(scored.delta, -5, 5);
 
     // Optional consistency guard: don't allow "good" to drop or "bad" to rise unless contradiction
     if (!response.isContradiction) {
