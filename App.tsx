@@ -358,11 +358,11 @@ function App() {
               </div>
 
               <p className="text-zinc-400 text-base md:text-lg">
-                You’re live on the nation's toughest news network.{" "}
+                You’re live on the nation's toughest network.{" "}
                 <span className="text-yellow-500 font-semibold">
-                  Every answer moves markets
+                  Every answer moves markets.
                 </span>
-                 Stay sharp and watch your share price climb. Slip up and the board will be
+                  Stay sharp and watch your share price climb. Slip up and the board will be
                 calling for your head.
               </p>
             </div>
