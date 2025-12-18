@@ -26,6 +26,8 @@ import {
   AlertCircle,
   Calendar,
   RefreshCcw,
+  TrendingUp,
+  TrendingDown,
 } from "lucide-react";
 
 function randInt(min: number, max: number) {
