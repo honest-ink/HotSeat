@@ -31,7 +31,6 @@ export interface InterviewState {
 export interface GeminiResponse {
   text: string;
   sentiment: 'positive' | 'negative' | 'neutral';
-  stockChange: number;
 
   // Turn-based completion
   isInterviewOver: boolean;
