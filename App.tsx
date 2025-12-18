@@ -377,7 +377,7 @@ function App() {
               </div>
 
               <p className="text-zinc-400 text-base md:text-lg">
-                You’re live on the country’s toughest news network where{" "}
+                You’re live on the nation's toughest news network where{" "}
                 <span className="text-yellow-500 font-semibold">
                   every answer moves markets
                 </span>
