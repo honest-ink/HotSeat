@@ -272,17 +272,14 @@ function App() {
 
     const scored = scoreAnswer(ctx);
 
-    // ADDED: use model stockChange as a bounded base move, then add rules delta
-    const base = clamp(Number(response.stockChange ?? 0), -1.5, 1.5);
-    let finalDelta = clamp(base + scored.delta, -3, 3);
+    // Market move comes only from your deterministic rules now
+    let finalDelta = clamp(scored.delta, -3, 3);
 
-    // Guardrail: never punish clear positive signal
-    const hasPositiveSignal =
-    response.sentiment === "positive" ||
-    (response.sentiment === "neutral" && base > 0);
-
-    if (hasPositiveSignal && finalDelta < 0 && !response.isContradiction) {
-    finalDelta = 0;
+    // Optional consistency guard: don't allow "good" to drop or "bad" to rise unless contradiction
+    if (!response.isContradiction) {
+      if (response.category === "good") finalDelta = Math.max(0, finalDelta);
+      if (response.category === "bad") finalDelta = Math.min(0, finalDelta);
+      if (response.category === "evasive") finalDelta = clamp(finalDelta, -1, 1);
     }
 
     // update evasive streak + apply delta
