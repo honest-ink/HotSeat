@@ -3,7 +3,7 @@ export const STARTING_STOCK_PRICE = 100.0;
 export const FAIL_STOCK_PRICE = 95.0;
 
 // Interview structure (turn-based)
-export const TOTAL_QUESTIONS = 5;
+export const TOTAL_QUESTIONS = 3;
 export const STARTING_TURN_INDEX = 0;
 
 // Question pacing
