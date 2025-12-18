@@ -229,22 +229,6 @@ function App() {
       if (delta < 0) audienceSentiment -= 8;
       audienceSentiment = Math.max(0, Math.min(100, audienceSentiment));
 
-      // failure condition
-      if (clamped < FAIL_STOCK_PRICE) {
-        clearTimers();
-        stopAudio();
-        setPhase(GamePhase.SUMMARY);
-        return {
-          ...prev,
-          stockPrice: clamped,
-          lowestPrice,
-          audienceSentiment,
-          awaitingAnswer: false,
-          outcome: "failure",
-          worstAnswer,
-        };
-      }
-
       return {
         ...prev,
         stockPrice: clamped,
