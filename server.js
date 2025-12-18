@@ -45,10 +45,15 @@ You must output your response in JSON format ONLY.
 The JSON structure must be:
 {
   "text": "Your spoken response/question to the guest",
+  "category": "good" | "evasive" | "bad",
+  "isContradiction": boolean,
   "sentiment": "positive" | "negative" | "neutral",
+  "reason": "short explanation (optional)",
   "isInterviewOver": false
 }
 Rules:
+- "category" must reflect the guest’s last answer quality.
+- Set "isContradiction" true only if the guest contradicts themselves or earlier claims.
 - "sentiment" must match the tone of "text".
 - Always set "isInterviewOver" to false. The client ends the interview.
 `.trim();
@@ -86,10 +91,13 @@ app.post("/api/init", async (req, res) => {
           type: Type.OBJECT,
           properties: {
             text: { type: Type.STRING },
+            category: { type: Type.STRING, enum: ["good", "evasive", "bad"] },
+            isContradiction: { type: Type.BOOLEAN },
             sentiment: { type: Type.STRING, enum: ["positive", "negative", "neutral"] },
+            reason: { type: Type.STRING },
             isInterviewOver: { type: Type.BOOLEAN }
           },
-          required: ["text", "sentiment", "isInterviewOver"]
+          required: ["text", "category", "isContradiction", "isInterviewOver"]
         }
       }
     });
@@ -113,6 +121,8 @@ app.post("/api/init", async (req, res) => {
     console.error("[init] error:", err);
     res.status(500).json({
       text: "Welcome to the show. Tell us about your company.",
+      category: "evasive",
+      isContradiction: false,
       sentiment: "neutral",
       isInterviewOver: false
     });
@@ -144,6 +154,8 @@ app.post("/api/chat", async (req, res) => {
     console.error("[chat] error:", err);
     res.status(500).json({
       text: "We seem to be having technical difficulties. Let's move on.",
+      category: "evasive",
+      isContradiction: false,
       sentiment: "neutral",
       isInterviewOver: false
     });
