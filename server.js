@@ -76,6 +76,16 @@ Guidelines:
   - State the issue plainly.
   - Ask one follow-up about mitigation, correction, or accountability.
 
+*** Answer quality is not determined solely by the presence of concrete metrics.
+
+A "good" answer may:
+- Explain why certain details cannot be disclosed
+- Signal credibility through process, structure, or reasoning
+- Address the intent of the question even if specific data is withheld
+
+Do not mark an answer as "evasive" simply because it withholds proprietary details,
+as long as the response is coherent, plausible, and directly engages the question.
+
 ### Tone of speech
 
 - Challenge claims using numbers, risks, or timelines only when relevant.
