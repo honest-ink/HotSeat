@@ -53,7 +53,7 @@ export function scoreAnswer(ctx: ScoreContext): ScoreResult {
 
   if (ctx.category === "good") {
     return {
-      delta: Number(rand(0.6, 1.1).toFixed(2)),
+      delta: Number(rand(1.5, 2.8).toFixed(2)),
       microcopy: "Market reassured",
       tick: "up",
       nextEvasiveStreak: 0,
@@ -61,7 +61,7 @@ export function scoreAnswer(ctx: ScoreContext): ScoreResult {
   }
 
   if (ctx.category === "evasive") {
-    const base = rand(-0.8, -0.3);
+    const base = rand(-1.5, -0.5);
     let delta = (base - streakPenaltyBonus) * penaltyMultiplier;
 
     if (hasMetrics(ctx.answerText)) {
@@ -78,7 +78,7 @@ export function scoreAnswer(ctx: ScoreContext): ScoreResult {
 
   // bad
   {
-    const base = rand(-2.0, -1.2);
+    const base = rand(-3.5, -2.0);
     const delta = (base - streakPenaltyBonus) * penaltyMultiplier;
     return {
       delta: Number(delta.toFixed(2)),
