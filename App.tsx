@@ -343,107 +343,108 @@ function App() {
   };
 
   // SETUP
-  if (phase === GamePhase.SETUP) {
-    return (
-      <div className="fixed inset-0 h-[100dvh] w-screen bg-black text-white font-sans overflow-hidden">
-        <div className="scanlines"></div>
-        <div className="absolute inset-0 bg-[url('https://picsum.photos/1920/1080?grayscale&blur=10')] opacity-20 bg-cover bg-center"></div>
+if (phase === GamePhase.SETUP) {
+  return (
+    <div className="fixed inset-0 h-[100dvh] w-screen bg-black text-white font-sans overflow-hidden">
+      <div className="scanlines"></div>
+      <div className="absolute inset-0 bg-[url('https://picsum.photos/1920/1080?grayscale&blur=10')] opacity-20 bg-cover bg-center"></div>
 
-        <div className="relative z-10 h-full w-full flex items-center justify-center p-4">
-          <div className="max-w-xl w-full bg-zinc-900/90 border border-zinc-800 rounded-2xl shadow-2xl backdrop-blur-xl overflow-hidden max-h-[calc(100dvh-32px)] flex flex-col">
-            <div className="p-6 md:p-8 pb-4 md:pb-6">
-              <div className="flex items-center gap-3 mb-4 text-yellow-500">
-                <Monitor size={32} />
-                <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tighter">
-                  The Hot Seat
-                </h1>
-              </div>
+      <div className="relative z-10 h-full w-full flex items-center justify-center p-4">
+        <div className="max-w-xl w-full bg-zinc-900/90 border border-zinc-800 rounded-2xl shadow-2xl backdrop-blur-xl overflow-hidden max-h-[calc(100dvh-32px)] flex flex-col">
+          <div className="p-6 md:p-8 pb-4 md:pb-6">
+            <div className="flex items-center gap-3 mb-4 text-yellow-500">
+              <Monitor size={32} />
+              <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tighter">
+                The Hot Seat
+              </h1>
+            </div>
 
-              <p className="text-zinc-400 text-base md:text-lg">
-                You're live on the nation&apos;s toughest news channel.{" "}
-                <span className="text-yellow-500 font-semibold">
-                  Every answer moves markets.
-                </span>
-              </p>
+            <p className="text-zinc-400 text-base md:text-lg">
+              You're live on the nation&apos;s toughest news channel.{" "}
+              <span className="text-yellow-500 font-semibold">
+                Every answer moves markets.
+              </span>
+            </p>
+          </div>
 
-            <div className="px-6 md:px-8 flex-1 overflow-y-auto">
-              <form onSubmit={handleSetupSubmit} className="space-y-5 pb-6">
-                <div>
-                  <label className="block text-xs font-bold uppercase text-zinc-500 mb-2">
-                    Company Name
-                  </label>
-                  <div className="relative">
-                    <Briefcase
-                      className="absolute left-3 top-3.5 text-zinc-500"
-                      size={18}
-                    />
-                    <input
-                      required
-                      className="w-full bg-black/50 border border-zinc-700 rounded-lg py-3 pl-10 pr-4 focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none transition-all"
-                      placeholder="e.g. OmniCorp"
-                      value={company.name}
-                      onChange={(e) =>
-                        setCompany({ ...company, name: e.target.value })
-                      }
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase text-zinc-500 mb-2">
-                    Industry
-                  </label>
+          <div className="px-6 md:px-8 flex-1 overflow-y-auto">
+            <form onSubmit={handleSetupSubmit} className="space-y-5 pb-6">
+              <div>
+                <label className="block text-xs font-bold uppercase text-zinc-500 mb-2">
+                  Company Name
+                </label>
+                <div className="relative">
+                  <Briefcase
+                    className="absolute left-3 top-3.5 text-zinc-500"
+                    size={18}
+                  />
                   <input
                     required
-                    className="w-full bg-black/50 border border-zinc-700 rounded-lg py-3 px-4 focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none transition-all"
-                    placeholder="e.g. Biotechnology, AI Defense, Fast Food"
-                    value={company.industry}
+                    className="w-full bg-black/50 border border-zinc-700 rounded-lg py-3 pl-10 pr-4 focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none transition-all"
+                    placeholder="e.g. OmniCorp"
+                    value={company.name}
                     onChange={(e) =>
-                      setCompany({ ...company, industry: e.target.value })
+                      setCompany({ ...company, name: e.target.value })
                     }
                   />
                 </div>
+              </div>
 
-                <div>
-                  <label className="block text-xs font-bold uppercase text-zinc-500 mb-2">
-                    Mission Statement (The Pitch)
-                  </label>
-                  <textarea
-                    required
-                    className="w-full bg-black/50 border border-zinc-700 rounded-lg py-3 px-4 focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none transition-all h-24 resize-none"
-                    placeholder="We make the world better by..."
-                    value={company.mission}
-                    onChange={(e) =>
-                      setCompany({ ...company, mission: e.target.value })
-                    }
-                  />
-                </div>
+              <div>
+                <label className="block text-xs font-bold uppercase text-zinc-500 mb-2">
+                  Industry
+                </label>
+                <input
+                  required
+                  className="w-full bg-black/50 border border-zinc-700 rounded-lg py-3 px-4 focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none transition-all"
+                  placeholder="e.g. Biotechnology, AI Defense, Fast Food"
+                  value={company.industry}
+                  onChange={(e) =>
+                    setCompany({ ...company, industry: e.target.value })
+                  }
+                />
+              </div>
 
-                <div className="h-2" />
-              </form>
-            </div>
+              <div>
+                <label className="block text-xs font-bold uppercase text-zinc-500 mb-2">
+                  Mission Statement (The Pitch)
+                </label>
+                <textarea
+                  required
+                  className="w-full bg-black/50 border border-zinc-700 rounded-lg py-3 px-4 focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none transition-all h-24 resize-none"
+                  placeholder="We make the world better by..."
+                  value={company.mission}
+                  onChange={(e) =>
+                    setCompany({ ...company, mission: e.target.value })
+                  }
+                />
+              </div>
 
-            <div className="px-6 md:px-8 pb-[calc(env(safe-area-inset-bottom)+16px)] pt-4 bg-gradient-to-t from-black/70 via-black/40 to-transparent border-t border-white/5">
-              <button
-                type="submit"
-                form="__setupForm__"
-                onClick={handleSetupSubmit as any}
-                className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-black uppercase py-4 rounded-lg tracking-widest flex items-center justify-center gap-2 hover:scale-[1.02] transition-transform"
-              >
-                <Play size={20} /> Go Live
-              </button>
-            </div>
-
-            <form
-              id="__setupForm__"
-              onSubmit={handleSetupSubmit}
-              className="hidden"
-            />
+              <div className="h-2" />
+            </form>
           </div>
+
+          <div className="px-6 md:px-8 pb-[calc(env(safe-area-inset-bottom)+16px)] pt-4 bg-gradient-to-t from-black/70 via-black/40 to-transparent border-t border-white/5">
+            <button
+              type="submit"
+              form="__setupForm__"
+              onClick={handleSetupSubmit as any}
+              className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-black uppercase py-4 rounded-lg tracking-widest flex items-center justify-center gap-2 hover:scale-[1.02] transition-transform"
+            >
+              <Play size={20} /> Go Live
+            </button>
+          </div>
+
+          <form
+            id="__setupForm__"
+            onSubmit={handleSetupSubmit}
+            className="hidden"
+          />
         </div>
       </div>
-    );
-  }
+    </div>
+  );
+}
 
   // INTRO
   if (phase === GamePhase.INTRO) {
