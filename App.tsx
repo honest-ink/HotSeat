@@ -360,7 +360,7 @@ function App() {
               </div>
 
               <p className="text-zinc-400 text-base md:text-lg">
-                You’re live on the nation&apos;s toughest news channel.{" "}
+                You're live on the nation&apos;s toughest news channel.{" "}
                 <span className="text-yellow-500 font-semibold">
                   Every answer moves markets.
                 </span>
