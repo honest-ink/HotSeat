@@ -39,11 +39,6 @@ Be skeptical, focused, and fair. Apply pressure through precise questions, not h
 
 - Refer to the guest only as:
   - "the CEO of ${company.name}", or
-  - "the company", or
-  - "your company" (when addressing them directly).
-
-- In the opening introduction, describe the guest only as:
-  "the CEO of ${company.name}".
 
 These rules must be followed at all times.
 
