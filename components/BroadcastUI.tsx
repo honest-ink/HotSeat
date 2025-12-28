@@ -109,108 +109,44 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
       </div>
 
       {/* --- MAIN CONTENT AREA --- */}
-      <div className="flex-1 flex flex-col md:flex-row relative overflow-hidden">
-        {/* LEFT COLUMN */}
-        <div
-          className={`
-            pointer-events-auto flex flex-col
-            absolute bottom-0 left-0 right-0 h-[60dvh] md:h-full md:static md:w-7/12
-            z-40
-            md:bg-gradient-to-r md:from-black/80 md:via-black/40 md:to-transparent
-            bg-gradient-to-t from-black via-black/90 to-transparent
-          `}
-        >
-          {/* Messages Container */}
-          <div
-            ref={scrollRef}
-            className="flex-1 overflow-y-auto px-4 pt-12 pb-2 md:p-8 md:pt-32 md:pb-8 space-y-4 md:space-y-6 scroll-smooth"
-            style={{
-              WebkitMaskImage:
-                "linear-gradient(to bottom, rgba(0,0,0,0) 0px, rgba(0,0,0,1) 90px, rgba(0,0,0,1) 100%)",
-              maskImage:
-                "linear-gradient(to bottom, rgba(0,0,0,0) 0px, rgba(0,0,0,1) 90px, rgba(0,0,0,1) 100%)",
-              WebkitMaskRepeat: "no-repeat",
-              maskRepeat: "no-repeat",
-              WebkitMaskSize: "100% 100%",
-              maskSize: "100% 100%",
-            }}
-          >
-            {/* Feed Intro Marker */}
-            <div className="flex justify-center mb-8 opacity-50">
-              <div className="bg-white/10 text-white/60 px-4 py-1 rounded-full text-[10px] font-mono tracking-widest uppercase flex items-center gap-2">
-                <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
-                Secure Connection Established
-              </div>
-            </div>
+<div className="flex-1 flex flex-col md:flex-row relative overflow-hidden">
+  {/* LEFT SIDE (desktop only spacer so the anchor stays visible) */}
+  <div className="hidden md:block md:w-7/12 h-full relative z-0" />
 
-            {messages.map((msg) => {
-              const showImpact =
-                msg.sender === "journalist" &&
-                typeof msg.stockImpact === "number" &&
-                msg.stockImpact !== 0;
+  {/* CHAT PANEL (mobile bottom sheet; desktop right column) */}
+  <div
+    className={`
+      pointer-events-auto flex flex-col
+      absolute bottom-0 left-0 right-0 h-[60dvh]
+      md:h-full md:static md:w-5/12
+      z-40
+      md:bg-gradient-to-l md:from-black/80 md:via-black/40 md:to-transparent
+      bg-gradient-to-t from-black via-black/90 to-transparent
+    `}
+  >
+    {/* Messages Container */}
+    <div
+      ref={scrollRef}
+      className="flex-1 overflow-y-auto px-4 pt-12 pb-2 md:p-8 md:pt-32 md:pb-8 space-y-4 md:space-y-6 scroll-smooth"
+      style={{
+        WebkitMaskImage:
+          "linear-gradient(to bottom, rgba(0,0,0,0) 0px, rgba(0,0,0,1) 90px, rgba(0,0,0,1) 100%)",
+        maskImage:
+          "linear-gradient(to bottom, rgba(0,0,0,0) 0px, rgba(0,0,0,1) 90px, rgba(0,0,0,1) 100%)",
+        WebkitMaskRepeat: "no-repeat",
+        maskRepeat: "no-repeat",
+        WebkitMaskSize: "100% 100%",
+        maskSize: "100% 100%",
+      }}
+    >
+      {/* ... keep your existing message rendering exactly as-is ... */}
+    </div>
 
-              return (
-                <div
-                  key={msg.id}
-                  className={`flex flex-col group ${
-                    msg.sender === "user" ? "items-end" : "items-start"
-                  }`}
-                >
-                  <div
-                    className={`
-                      relative max-w-[90%] md:max-w-[80%] p-3 md:p-5 rounded-2xl shadow-lg border backdrop-blur-md transition-all duration-300
-                      ${
-                        msg.sender === "journalist"
-                          ? "bg-white/90 text-gray-900 border-white/50 rounded-tl-none mr-8 md:mr-20 shadow-[0_4px_20px_rgba(255,255,255,0.1)]"
-                          : "bg-blue-600/80 text-white border-blue-400/30 rounded-tr-none ml-8 md:ml-20 shadow-[0_4px_20px_rgba(37,99,235,0.2)]"
-                      }
-                      ${msg.flash === "red" ? "ring-2 ring-red-500 animate-pulse" : ""}
-                    `}
-                  >
-                    <span
-                      className={`text-[9px] font-black uppercase tracking-wider block mb-1 opacity-70 ${
-                        msg.sender === "journalist"
-                          ? "text-blue-900"
-                          : "text-blue-100"
-                      }`}
-                    >
-                      {msg.sender === "journalist"
-                        ? "Diane (Host)"
-                        : "You (Guest)"}
-                    </span>
+    {/* Input Area */}
+    {/* ... keep your existing input area exactly as-is ... */}
+  </div>
+</div>
 
-                    <p className="text-sm md:text-xl leading-relaxed font-medium">
-                      {msg.text}
-                    </p>
-
-                    {/* Microcopy */}
-                    {msg.sender === "journalist" && msg.microcopy && (
-                      <div className="mt-2 text-[10px] md:text-xs font-bold uppercase tracking-widest opacity-70">
-                        {msg.microcopy}
-                      </div>
-                    )}
-
-                    {/* Stock Impact Badge (delta points, not %) */}
-                    {showImpact && (
-                      <div
-                        className={`
-                          absolute -bottom-3 -right-2 px-2 py-1 rounded-md text-[10px] font-mono font-bold shadow-sm border border-black/5 flex items-center gap-1
-                          ${msg.stockImpact! > 0 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}
-                        `}
-                      >
-                        {msg.stockImpact! > 0 ? (
-                          <TrendingUp size={10} />
-                        ) : (
-                          <TrendingDown size={10} />
-                        )}
-                        {msg.stockImpact! > 0 ? "+" : ""}
-                        {msg.stockImpact!.toFixed(2)}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
 
             {isLoading && (
               <div className="flex items-start">
