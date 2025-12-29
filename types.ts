@@ -1,9 +1,11 @@
 export enum GamePhase {
-  SETUP = 'SETUP',
-  INTRO = 'INTRO',
-  INTERVIEW = 'INTERVIEW',
-  SUMMARY = 'SUMMARY',
+  SETUP = "SETUP",
+  INTRO = "INTRO",
+  INTERVIEW = "INTERVIEW",
+  SUMMARY = "SUMMARY",
 }
+
+export type AnswerCategory = "good" | "evasive" | "bad";
 
 export interface CompanyProfile {
   name: string;
@@ -13,9 +15,9 @@ export interface CompanyProfile {
 
 export interface Message {
   id: string;
-  sender: 'user' | 'journalist';
+  sender: "user" | "journalist";
   text: string;
-  sentiment?: 'positive' | 'negative' | 'neutral';
+  sentiment?: "positive" | "negative" | "neutral";
   stockImpact?: number;
 }
 
@@ -25,13 +27,15 @@ export interface InterviewState {
 
   // Turn-based interview progress
   questionCount: number; // current turn (1..maxQuestions)
-  maxQuestions: number;  // total turns (e.g. 5)
+  maxQuestions: number; // total turns (e.g. 3)
 }
 
 export interface GeminiResponse {
   text: string;
-  sentiment: 'positive' | 'negative' | 'neutral';
-  stockChange: number;
+  category: AnswerCategory;
+  isContradiction: boolean;
+  sentiment?: "positive" | "negative" | "neutral";
+  reason?: string;
 
   // Turn-based completion
   isInterviewOver: boolean;
