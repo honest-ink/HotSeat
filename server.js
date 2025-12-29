@@ -7,7 +7,6 @@ const { GoogleGenAI, Type } = require("@google/genai");
 const app = express();
 const port = process.env.PORT || 8080;
 
-// Parse JSON bodies
 app.use(express.json({ limit: "1mb" }));
 
 // ---- Gemini setup (SERVER ONLY) ----
@@ -15,7 +14,6 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 if (!GEMINI_API_KEY) {
   console.error("Missing env var GEMINI_API_KEY");
 }
-
 const ai = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : null;
 
 // Simple in-memory chat store (will reset if instance restarts)
@@ -103,8 +101,8 @@ A "good" answer may:
 Do not mark an answer as "evasive" simply because it withholds proprietary details,
 as long as the response is coherent, plausible, and directly engages the question.
 
-You must output your response in JSON format ONLY.
-The JSON structure must be:
+Output JSON ONLY. No markdown. No extra text.
+The JSON must match this schema:
 {
   "text": "Your spoken response/question to the guest",
   "category": "good" | "evasive" | "bad",
@@ -128,6 +126,28 @@ function safeParseJson(text) {
     return null;
   }
 }
+
+function fallbackResponse(text) {
+  return {
+    text,
+    category: "evasive",
+    isContradiction: false,
+    sentiment: "neutral",
+    reason: "fallback",
+  };
+}
+
+const responseSchema = {
+  type: Type.OBJECT,
+  properties: {
+    text: { type: Type.STRING },
+    category: { type: Type.STRING, enum: ["good", "evasive", "bad"] },
+    isContradiction: { type: Type.BOOLEAN },
+    sentiment: { type: Type.STRING, enum: ["positive", "negative", "neutral"] },
+    reason: { type: Type.STRING },
+  },
+  required: ["text", "category", "isContradiction"],
+};
 
 app.get("/api/health", (req, res) => {
   res.json({ ok: true, hasKey: Boolean(GEMINI_API_KEY) });
@@ -168,6 +188,8 @@ app.post("/api/init", async (req, res) => {
 
     console.log("[init] session:", sessionId, "company:", company.name);
 
+    // First message: intro + first question.
+    // Client starts the 60s timer when it receives this.
     const first = await chatSession.sendMessage({
       message: "Start the show. Introduce the guest to the audience and ask the first opening question. Be inquisitive."
     });
@@ -178,7 +200,16 @@ app.post("/api/init", async (req, res) => {
       return res.status(502).json({ error: "Gemini returned non-JSON", raw: first.text });
     }
 
-    res.json({ sessionId, ...parsed });
+    // If Gemini forgets placeholders, force them so the client doesn't crash.
+    const normalized = {
+      text: parsed.text ?? "Welcome. Let’s start. What’s your core business risk right now?",
+      category: parsed.category ?? "evasive",
+      isContradiction: Boolean(parsed.isContradiction),
+      sentiment: parsed.sentiment,
+      reason: parsed.reason,
+    };
+
+    res.json({ sessionId, ...normalized });
   } catch (err) {
     console.error("[init] error:", err);
     res.status(500).json({
@@ -196,22 +227,34 @@ app.post("/api/chat", async (req, res) => {
     if (!ai) return res.status(500).json({ error: "Server missing GEMINI_API_KEY" });
 
     const { sessionId, message } = req.body || {};
-    if (!sessionId || !message) return res.status(400).json({ error: "Missing sessionId or message" });
+    if (!sessionId) return res.status(400).json({ error: "Missing sessionId" });
 
     const chatSession = sessions.get(sessionId);
     if (!chatSession) return res.status(404).json({ error: "Unknown sessionId (server restarted?)" });
 
-    console.log("[chat]", sessionId, "user:", message);
+    const msg = typeof message === "string" ? message : "";
+    if (!msg) return res.status(400).json({ error: "Missing message" });
 
-    const r = await chatSession.sendMessage({ message });
+    console.log("[chat]", sessionId, "user:", msg);
+
+    const r = await chatSession.sendMessage({ message: msg });
+
     const parsed = safeParseJson(r.text || "");
     if (!parsed) {
       console.error("[chat] bad json:", r.text);
       return res.status(502).json({ error: "Gemini returned non-JSON", raw: r.text });
     }
 
-    console.log("[chat]", sessionId, "host:", parsed.text);
-    res.json(parsed);
+    const normalized = {
+      text: parsed.text ?? "Answer the question directly. What are you hiding?",
+      category: parsed.category ?? "evasive",
+      isContradiction: Boolean(parsed.isContradiction),
+      sentiment: parsed.sentiment,
+      reason: parsed.reason,
+    };
+
+    console.log("[chat]", sessionId, "host:", normalized.text);
+    res.json(normalized);
   } catch (err) {
     console.error("[chat] error:", err);
     res.status(500).json({

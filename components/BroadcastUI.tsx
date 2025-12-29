@@ -17,6 +17,11 @@ interface BroadcastUIProps {
   companyName: string;
 }
 
+function formatSeconds(ms: number) {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return s.toString().padStart(2, "0");
+}
+
 const BroadcastUI: React.FC<BroadcastUIProps> = ({
   messages,
   state,
@@ -266,7 +271,9 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
         <div className="flex items-stretch mx-8 lg:mx-16 mb-6 shadow-[0_10px_50px_rgba(0,0,0,0.5)] transform translate-y-2">
           <div className="w-40 bg-[#002855] flex flex-col items-center justify-center text-white border-r border-white/10 shrink-0 relative overflow-hidden">
             <div className="absolute inset-0 bg-blue-500/20 animate-pulse"></div>
-            <h1 className="font-black text-3xl italic leading-none relative z-10">GNN</h1>
+            <h1 className="font-black text-3xl italic leading-none relative z-10">
+              GNN
+            </h1>
             <div className="text-[9px] uppercase tracking-[0.2em] relative z-10 text-blue-200">
               Business
             </div>
@@ -294,7 +301,8 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
             <div className="ticker-move text-sm font-medium flex items-center">
               {NEWS_TICKER_HEADLINES.map((item, i) => (
                 <span key={i} className="inline-flex items-center px-8">
-                  {item} <span className="text-blue-500 mx-4 text-xs">▲ 0.4%</span>
+                  {item}{" "}
+                  <span className="text-blue-500 mx-4 text-xs">▲ 0.4%</span>
                 </span>
               ))}
             </div>

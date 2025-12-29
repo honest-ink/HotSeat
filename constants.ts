@@ -33,3 +33,6 @@ export const NEWS_TICKER_HEADLINES = [
 
 export const JOURNALIST_NAME = "Diane Sawyer-bot";
 export const SHOW_NAME = "THE HOT SEAT";
+export const FAIL_STOCK_PRICE = 0;
+export const STARTING_STOCK_PRICE = INITIAL_STOCK_PRICE;
+export const TOTAL_QUESTIONS = MAX_QUESTIONS;
