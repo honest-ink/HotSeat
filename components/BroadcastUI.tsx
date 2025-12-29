@@ -4,7 +4,7 @@ import {
   TrendingUp,
   TrendingDown,
   AlertCircle,
-  Timer,
+  Mic,
 } from "lucide-react";
 import { Message, InterviewState } from "../types";
 import { FAIL_STOCK_PRICE, NEWS_TICKER_HEADLINES } from "../constants";
@@ -54,7 +54,13 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
 
   const tickerSymbol = companyName.substring(0, 4).toUpperCase() || "XXXX";
 
-  const timeLeft = formatSeconds(state.timeLeftMs);
+  // Progress (answered / total)
+  const answered = state.awaitingAnswer
+    ? Math.max(0, state.questionCount - 1)
+    : state.questionCount;
+
+  const progressLabel = `${Math.max(0, Math.min(answered, state.maxQuestions))}/${state.maxQuestions}`;
+
   const isFailZone = state.stockPrice < FAIL_STOCK_PRICE;
   const isNearFail = state.stockPrice < FAIL_STOCK_PRICE + 1.5; // UI warning band
 
@@ -73,16 +79,13 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
           </div>
         </div>
 
-        {/* Right cluster: Timer + Stock */}
+        {/* Right cluster: Progress + Stock */}
         <div className="flex flex-col items-end gap-2">
-          {/* Timer */}
+          {/* Progress */}
           <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md text-white px-3 py-2 rounded-lg border border-white/10 shadow-2xl">
-            <Timer
-              size={16}
-              className={state.timeLeftMs <= 15_000 ? "text-red-400" : "text-white"}
-            />
+            <Mic size={16} className="text-white" />
             <div className="font-mono font-bold text-lg tracking-widest">
-              {timeLeft}s
+              {progressLabel}
             </div>
           </div>
 
@@ -252,10 +255,7 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
                   disabled={!input.trim() || !canType}
                   className="px-6 py-4 bg-white/5 hover:bg-white/10 text-blue-400 disabled:text-zinc-600 disabled:hover:bg-transparent transition-colors border-l border-white/5"
                 >
-                  <Send
-                    size={20}
-                    className={!canType ? "opacity-0" : "opacity-100"}
-                  />
+                  <Send size={20} className={!canType ? "opacity-0" : "opacity-100"} />
                 </button>
               </div>
             </form>

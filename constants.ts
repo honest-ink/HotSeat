@@ -1,6 +1,25 @@
-export const INITIAL_STOCK_PRICE = 100.00;
-export const MAX_QUESTIONS = 8;
+// Game rules
+export const STARTING_STOCK_PRICE = 100.0;
+export const FAIL_STOCK_PRICE = 95.0;
 
+// Interview structure (turn-based)
+export const TOTAL_QUESTIONS = 3;
+export const STARTING_TURN_INDEX = 0;
+
+// Question pacing
+// Turn-based, so no timing delays between questions
+export const QUESTIONS_PER_TURN = 1;
+
+// Interviewer silence callouts
+export const SILENCE_LINES = [
+  "That’s not an answer.",
+  "You’re avoiding the question.",
+  "Are you going to respond?",
+  "Silence isn’t reassuring.",
+  "The market’s noticing.",
+];
+
+// UI copy / flavour
 export const NEWS_TICKER_HEADLINES = [
   "MARKETS RALLY AS TECH SECTOR BOOMS",
   "BREAKING: LIVE INTERVIEW IN PROGRESS",
