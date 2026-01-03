@@ -114,7 +114,7 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
       </div>
 
       {/* --- MAIN CONTENT AREA --- */}
-      <div className="flex-1 flex flex-col md:flex-row relative overflow-hidden">
+      <div className="flex-1 flex flex-col md:flex-row-reverse relative overflow-hidden">
         {/* LEFT COLUMN */}
         <div
           className={`
