@@ -123,6 +123,7 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
             z-40
             md:bg-gradient-to-r md:from-black/80 md:via-black/40 md:to-transparent
             bg-gradient-to-t from-black via-black/90 to-transparent
+            <div className="... md:pb-24 ...">
           `}
         >
           {/* Messages Container */}
