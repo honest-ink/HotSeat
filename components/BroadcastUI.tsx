@@ -236,7 +236,7 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
           <div className="p-4 md:p-8 pt-0 md:pt-4 pb-[calc(env(safe-area-inset-bottom)+16px)]">
             <form onSubmit={handleSubmit} className="relative group">
               <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl opacity-50 blur group-hover:opacity-75 transition duration-200"></div>
-              <div className="relative flex items-center bg-zinc-900 rounded-xl border border-white/10 shadow-2xl overflow-hidden">
+              <div className="relative flex items-center h-14 md:h-16 bg-zinc-900 rounded-xl border border-white/10 shadow-2xl overflow-hidden">
                 <input
                   type="text"
                   value={input}
@@ -249,12 +249,12 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
                       ? "Type your response..."
                       : "Waiting for the next question..."
                   }
-                  className="flex-1 bg-transparent px-4 py-4 text-white placeholder-zinc-500 focus:outline-none font-medium text-base md:text-lg min-w-0"
+                  className="flex-1 bg-transparent px-4 h-full text-white placeholder-zinc-500 focus:outline-none font-medium text-base md:text-lg min-w-0"
                 />
                 <button
                   type="submit"
                   disabled={!input.trim() || !canType}
-                  className="px-6 py-4 bg-white/5 hover:bg-white/10 text-blue-400 disabled:text-zinc-600 disabled:hover:bg-transparent transition-colors border-l border-white/5"
+                  className="px-6 h-full bg-white/5 hover:bg-white/10 text-blue-400 disabled:text-zinc-600 disabled:hover:bg-transparent transition-colors border-l border-white/5"
                 >
                   <Send size={20} className={!canType ? "opacity-0" : "opacity-100"} />
                 </button>
