@@ -119,7 +119,7 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
         <div
           className={`
             pointer-events-auto flex flex-col
-            absolute bottom-0 left-0 right-0 h-[60dvh] md:h-full md:static md:w-7/12
+            absolute bottom-0 left-0 right-0 h-[60dvh] md:h-full md:static md:w-1/2
             z-40
             md:bg-gradient-to-r md:from-black/80 md:via-black/40 md:to-transparent
             bg-gradient-to-t from-black via-black/90 to-transparent
@@ -264,7 +264,7 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
         </div>
 
         {/* RIGHT COLUMN */}
-        <div className="w-full md:w-5/12 h-full relative z-0 hidden md:block" />
+        <div className="w-full md:w-1/2 h-full relative z-0 hidden md:block" />
       </div>
 
       {/* --- LOWER THIRDS (News Ticker) --- */}
