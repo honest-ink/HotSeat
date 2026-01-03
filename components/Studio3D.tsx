@@ -93,7 +93,7 @@ const Studio3D: React.FC<Studio3DProps> = ({ isTalking, sentiment }) => {
 
         {/* --- NEWS ANCHOR CHARACTER --- */}
         <div
-          className="absolute bottom-0 right-[-42%] md:right-auto md:left-[4%] w-[80vh] h-[90vh] pointer-events-none transition-all duration-500 ease-out origin-bottom"
+          className="absolute bottom-0 right-[-42%] md:left-0 md:bottom-0 md:w-1/2 md:h-full md:right-auto w-[80vh] h-[90vh] pointer-events-none transition-all duration-500 ease-out origin-bottom"
           style={{
             transform: `translateZ(-150px) scale(${isTalking ? 1.02 : 1})`,
             filter: isTalking ? "brightness(1.05)" : "brightness(0.95)",
