@@ -217,6 +217,7 @@ app.post("/api/init", async (req, res) => {
       category: "evasive",
       isContradiction: false,
       sentiment: "neutral",
+      reason: parsed.reason,
       isInterviewOver: false
     });
   }
