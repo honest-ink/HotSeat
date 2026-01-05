@@ -217,7 +217,7 @@ app.post("/api/init", async (req, res) => {
       category: "evasive",
       isContradiction: false,
       sentiment: "neutral",
-      reason: parsed.reason,
+      reason: "init fallback",
       isInterviewOver: false
     });
   }
