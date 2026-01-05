@@ -575,7 +575,7 @@ function App() {
           {/* CTA + Replay */}
           <div className="shrink-0 pb-2 flex flex-col items-center gap-4 w-full">
             <a
-              href="https://calendar.app.google/F1z9UmnTGLYX3nhk7"
+              href="https://www.honest-ink.com/contact"
               target="_blank"
               rel="noopener noreferrer"
               className={`group text-black font-black uppercase px-8 py-4 rounded-full tracking-widest flex items-center justify-center gap-3 transition-all hover:scale-[1.02] shadow-xl w-full md:w-auto min-w-[300px] ${
