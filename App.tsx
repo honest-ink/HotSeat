@@ -147,29 +147,38 @@ function App() {
       setPhase(GamePhase.INTERVIEW);
       setIsLoading(true);
 
-      const opening = await GeminiService.initInterview(company);
+      try {
+        const opening = await GeminiService.initInterview(company);
 
-      // first journalist message = first question delivered
-      postJournalistLine(opening.text, {
-        category: undefined,
-        microcopy: undefined,
-        stockImpact: undefined,
-        flash: undefined,
-        tick: undefined,
-      });
+        // first journalist message = first question delivered
+        postJournalistLine(opening.text, {
+          category: undefined,
+          microcopy: undefined,
+          stockImpact: undefined,
+          flash: undefined,
+          tick: undefined,
+        });
 
-      // mark first turn as active
-      lastQuestionRef.current = opening.text;
-      setInterviewState((prev) => ({
-        ...prev,
-        startedAtMs: Date.now(),
-        questionAskedAtMs: Date.now(),
-        awaitingAnswer: true,
-        questionCount: 1,
-        maxQuestions: TOTAL_QUESTIONS,
-      }));
-
-      setIsLoading(false);
+        // mark first turn as active
+        lastQuestionRef.current = opening.text;
+        setInterviewState((prev) => ({
+          ...prev,
+          startedAtMs: Date.now(),
+          questionAskedAtMs: Date.now(),
+          awaitingAnswer: true,
+          questionCount: 1,
+          maxQuestions: TOTAL_QUESTIONS,
+        }));
+      } catch (err) {
+        console.error(err);
+        postJournalistLine(
+          "We’ve hit a technical issue. Refresh and try again in a moment.",
+          { category: "bad" }
+        );
+        setInterviewState((prev) => ({ ...prev, awaitingAnswer: false }));
+      } finally {
+        setIsLoading(false);
+      }
     }, 3000);
   };
 
@@ -246,87 +255,95 @@ function App() {
 
     setIsLoading(true);
 
-    const response = await GeminiService.sendUserAnswer(userText);
+    try {
+      const response = await GeminiService.sendUserAnswer(userText);
 
-    // compute delta using your rules
-    const ctx = {
-      category: response.category,
-      isContradiction: response.isContradiction,
-      evasiveStreakBefore: interviewState.evasiveStreak,
-      timeLeftMs: undefined,
-    };
+      // compute delta using your rules
+      const ctx = {
+        category: response.category,
+        isContradiction: response.isContradiction,
+        evasiveStreakBefore: interviewState.evasiveStreak,
+        timeLeftMs: undefined,
+      };
 
-    const scored = scoreAnswer(ctx);
+      const scored = scoreAnswer(ctx);
 
-    // Market move comes only from your deterministic rules now
-    let finalDelta = clamp(scored.delta, -5, 5);
+      // Market move comes only from your deterministic rules now
+      let finalDelta = clamp(scored.delta, -5, 5);
 
-    // Optional consistency guard: don't allow "good" to drop or "bad" to rise unless contradiction
-    if (!response.isContradiction) {
-      if (response.category === "good") finalDelta = Math.max(0, finalDelta);
-      if (response.category === "bad") finalDelta = Math.min(0, finalDelta);
-      if (response.category === "evasive") finalDelta = clamp(finalDelta, -1, 1);
-    }
-
-    // update evasive streak + apply delta
-    setInterviewState((prev) => ({
-      ...prev,
-      evasiveStreak: scored.nextEvasiveStreak,
-    }));
-
-    const worst: WorstAnswer | undefined =
-      finalDelta < 0
-        ? {
-            userText,
-            questionText: lastQuestionRef.current,
-            category: response.isContradiction ? "bad" : response.category,
-            delta: finalDelta,
-            reason: response.reason,
-            atTimeLeftMs: 0,
-          }
-        : undefined;
-
-    // journalist replies (your current backend returns a line here)
-    postJournalistLine(response.text, {
-      stockImpact: finalDelta,
-      microcopy: scored.microcopy,
-      flash: scored.flash,
-      tick: scored.tick,
-      category: response.category,
-    });
-
-    applyDeltaAndCheck(finalDelta, worst);
-
-    setIsLoading(false);
-
-    // turn-based progression + success condition
-    setInterviewState((prev) => {
-      // If we already failed, phase is SUMMARY and awaitingAnswer is false.
-      if (prev.outcome === "failure") return prev;
-
-      // If we just answered the last question, end the interview successfully.
-      if (prev.questionCount >= prev.maxQuestions) {
-        clearTimers();
-        stopAudio();
-        setPhase(GamePhase.SUMMARY);
-        return {
-          ...prev,
-          awaitingAnswer: false,
-          outcome: "success",
-        };
+      // Optional consistency guard: don't allow "good" to drop or "bad" to rise unless contradiction
+      if (!response.isContradiction) {
+        if (response.category === "good") finalDelta = Math.max(0, finalDelta);
+        if (response.category === "bad") finalDelta = Math.min(0, finalDelta);
+        if (response.category === "evasive") finalDelta = clamp(finalDelta, -1, 1);
       }
 
-      // Otherwise, advance to next question turn.
-      // The backend response text above is assumed to contain the next prompt.
-      lastQuestionRef.current = response.text;
-
-      return {
+      // update evasive streak + apply delta
+      setInterviewState((prev) => ({
         ...prev,
-        awaitingAnswer: true,
-        questionCount: prev.questionCount + 1,
-        questionAskedAtMs: Date.now(),
-      };
-    });
+        evasiveStreak: scored.nextEvasiveStreak,
+      }));
+
+      const worst: WorstAnswer | undefined =
+        finalDelta < 0
+          ? {
+              userText,
+              questionText: lastQuestionRef.current,
+              category: response.isContradiction ? "bad" : response.category,
+              delta: finalDelta,
+              reason: response.reason,
+              atTimeLeftMs: 0,
+            }
+          : undefined;
+
+      // journalist replies (your current backend returns a line here)
+      postJournalistLine(response.text, {
+        stockImpact: finalDelta,
+        microcopy: scored.microcopy,
+        flash: scored.flash,
+        tick: scored.tick,
+        category: response.category,
+      });
+
+      applyDeltaAndCheck(finalDelta, worst);
+
+      // turn-based progression + success condition
+      setInterviewState((prev) => {
+        // If we already failed, phase is SUMMARY and awaitingAnswer is false.
+        if (prev.outcome === "failure") return prev;
+
+        // If we just answered the last question, end the interview successfully.
+        if (prev.questionCount >= prev.maxQuestions) {
+          clearTimers();
+          stopAudio();
+          setPhase(GamePhase.SUMMARY);
+          return {
+            ...prev,
+            awaitingAnswer: false,
+            outcome: "success",
+          };
+        }
+
+        // Otherwise, advance to next question turn.
+        // The backend response text above is assumed to contain the next prompt.
+        lastQuestionRef.current = response.text;
+
+        return {
+          ...prev,
+          awaitingAnswer: true,
+          questionCount: prev.questionCount + 1,
+          questionAskedAtMs: Date.now(),
+        };
+      });
+    } catch (err) {
+      console.error(err);
+      postJournalistLine("I can’t get a response right now. Try again.", {
+        category: "bad",
+      });
+      setInterviewState((prev) => ({ ...prev, awaitingAnswer: true }));
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleUserResponse = async (text: string) => {
@@ -343,108 +360,108 @@ function App() {
   };
 
   // SETUP
-if (phase === GamePhase.SETUP) {
-  return (
-    <div className="fixed inset-0 h-[100dvh] w-screen bg-black text-white font-sans overflow-hidden">
-      <div className="scanlines"></div>
-      <div className="absolute inset-0 bg-[url('https://picsum.photos/1920/1080?grayscale&blur=10')] opacity-20 bg-cover bg-center"></div>
+  if (phase === GamePhase.SETUP) {
+    return (
+      <div className="fixed inset-0 h-[100dvh] w-screen bg-black text-white font-sans overflow-hidden">
+        <div className="scanlines"></div>
+        <div className="absolute inset-0 bg-[url('https://picsum.photos/1920/1080?grayscale&blur=10')] opacity-20 bg-cover bg-center"></div>
 
-      <div className="relative z-10 h-full w-full flex items-center justify-center p-4">
-        <div className="max-w-xl w-full bg-zinc-900/90 border border-zinc-800 rounded-2xl shadow-2xl backdrop-blur-xl overflow-hidden max-h-[calc(100dvh-32px)] flex flex-col">
-          <div className="p-6 md:p-8 pb-4 md:pb-6">
-            <div className="flex items-center gap-3 mb-4 text-yellow-500">
-              <Monitor size={32} />
-              <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tighter">
-                The Hot Seat
-              </h1>
+        <div className="relative z-10 h-full w-full flex items-center justify-center p-4">
+          <div className="max-w-xl w-full bg-zinc-900/90 border border-zinc-800 rounded-2xl shadow-2xl backdrop-blur-xl overflow-hidden max-h-[calc(100dvh-32px)] flex flex-col">
+            <div className="p-6 md:p-8 pb-4 md:pb-6">
+              <div className="flex items-center gap-3 mb-4 text-yellow-500">
+                <Monitor size={32} />
+                <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tighter">
+                  The Hot Seat
+                </h1>
+              </div>
+
+              <p className="text-zinc-400 text-base md:text-lg">
+                You're live on the nation&apos;s toughest news channel.{" "}
+                <span className="text-yellow-500 font-semibold">
+                  Every answer moves markets.
+                </span>
+              </p>
             </div>
 
-            <p className="text-zinc-400 text-base md:text-lg">
-              You're live on the nation&apos;s toughest news channel.{" "}
-              <span className="text-yellow-500 font-semibold">
-                Every answer moves markets.
-              </span>
-            </p>
-          </div>
+            <div className="px-6 md:px-8 flex-1 overflow-y-auto">
+              <form onSubmit={handleSetupSubmit} className="space-y-5 pb-6">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-zinc-500 mb-2">
+                    Company Name
+                  </label>
+                  <div className="relative">
+                    <Briefcase
+                      className="absolute left-3 top-3.5 text-zinc-500"
+                      size={18}
+                    />
+                    <input
+                      required
+                      className="w-full bg-black/50 border border-zinc-700 rounded-lg py-3 pl-10 pr-4 focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none transition-all"
+                      placeholder="e.g. OmniCorp"
+                      value={company.name}
+                      onChange={(e) =>
+                        setCompany({ ...company, name: e.target.value })
+                      }
+                    />
+                  </div>
+                </div>
 
-          <div className="px-6 md:px-8 flex-1 overflow-y-auto">
-            <form onSubmit={handleSetupSubmit} className="space-y-5 pb-6">
-              <div>
-                <label className="block text-xs font-bold uppercase text-zinc-500 mb-2">
-                  Company Name
-                </label>
-                <div className="relative">
-                  <Briefcase
-                    className="absolute left-3 top-3.5 text-zinc-500"
-                    size={18}
-                  />
+                <div>
+                  <label className="block text-xs font-bold uppercase text-zinc-500 mb-2">
+                    Industry
+                  </label>
                   <input
                     required
-                    className="w-full bg-black/50 border border-zinc-700 rounded-lg py-3 pl-10 pr-4 focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none transition-all"
-                    placeholder="e.g. OmniCorp"
-                    value={company.name}
+                    className="w-full bg-black/50 border border-zinc-700 rounded-lg py-3 px-4 focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none transition-all"
+                    placeholder="e.g. Biotechnology, AI Defense, Fast Food"
+                    value={company.industry}
                     onChange={(e) =>
-                      setCompany({ ...company, name: e.target.value })
+                      setCompany({ ...company, industry: e.target.value })
                     }
                   />
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-xs font-bold uppercase text-zinc-500 mb-2">
-                  Industry
-                </label>
-                <input
-                  required
-                  className="w-full bg-black/50 border border-zinc-700 rounded-lg py-3 px-4 focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none transition-all"
-                  placeholder="e.g. Biotechnology, AI Defense, Fast Food"
-                  value={company.industry}
-                  onChange={(e) =>
-                    setCompany({ ...company, industry: e.target.value })
-                  }
-                />
-              </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-zinc-500 mb-2">
+                    Mission Statement (The Pitch)
+                  </label>
+                  <textarea
+                    required
+                    className="w-full bg-black/50 border border-zinc-700 rounded-lg py-3 px-4 focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none transition-all h-24 resize-none"
+                    placeholder="We make the world better by..."
+                    value={company.mission}
+                    onChange={(e) =>
+                      setCompany({ ...company, mission: e.target.value })
+                    }
+                  />
+                </div>
 
-              <div>
-                <label className="block text-xs font-bold uppercase text-zinc-500 mb-2">
-                  Mission Statement (The Pitch)
-                </label>
-                <textarea
-                  required
-                  className="w-full bg-black/50 border border-zinc-700 rounded-lg py-3 px-4 focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none transition-all h-24 resize-none"
-                  placeholder="We make the world better by..."
-                  value={company.mission}
-                  onChange={(e) =>
-                    setCompany({ ...company, mission: e.target.value })
-                  }
-                />
-              </div>
+                <div className="h-2" />
+              </form>
+            </div>
 
-              <div className="h-2" />
-            </form>
+            <div className="px-6 md:px-8 pb-[calc(env(safe-area-inset-bottom)+16px)] pt-4 bg-gradient-to-t from-black/70 via-black/40 to-transparent border-t border-white/5">
+              <button
+                type="submit"
+                form="__setupForm__"
+                onClick={handleSetupSubmit as any}
+                className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-black uppercase py-4 rounded-lg tracking-widest flex items-center justify-center gap-2 hover:scale-[1.02] transition-transform"
+              >
+                <Play size={20} /> Go Live
+              </button>
+            </div>
+
+            <form
+              id="__setupForm__"
+              onSubmit={handleSetupSubmit}
+              className="hidden"
+            />
           </div>
-
-          <div className="px-6 md:px-8 pb-[calc(env(safe-area-inset-bottom)+16px)] pt-4 bg-gradient-to-t from-black/70 via-black/40 to-transparent border-t border-white/5">
-            <button
-              type="submit"
-              form="__setupForm__"
-              onClick={handleSetupSubmit as any}
-              className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-black uppercase py-4 rounded-lg tracking-widest flex items-center justify-center gap-2 hover:scale-[1.02] transition-transform"
-            >
-              <Play size={20} /> Go Live
-            </button>
-          </div>
-
-          <form
-            id="__setupForm__"
-            onSubmit={handleSetupSubmit}
-            className="hidden"
-          />
         </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
   // INTRO
   if (phase === GamePhase.INTRO) {
@@ -475,109 +492,114 @@ if (phase === GamePhase.SETUP) {
   }
 
   // SUMMARY
-if (phase === GamePhase.SUMMARY) {
-  const finalPrice = interviewState.stockPrice;
-  const delta = Number((finalPrice - STARTING_STOCK_PRICE).toFixed(2));
-  const isUp = delta >= 0;
+  if (phase === GamePhase.SUMMARY) {
+    const finalPrice = interviewState.stockPrice;
+    const delta = Number((finalPrice - STARTING_STOCK_PRICE).toFixed(2));
+    const isUp = delta >= 0;
 
-  const head = isUp ? "A STAR IS BORN" : "CUT TO COMMERCIAL";
-  const subhead = isUp
-    ? "The board want to congratulate you"
-    : "Confidence collapsed on air.";
+    const head = isUp ? "A STAR IS BORN" : "CUT TO COMMERCIAL";
+    const subhead = isUp
+      ? "The board want to congratulate you"
+      : "Confidence collapsed on air.";
 
-  const producerNote = isUp
-    ? "The market just responded to your vision. Now, let’s transform that narrative into a content strategy that lands with your ideal clients."
-    : "Your vision is there, but the delivery is getting lost in translation. Let's fix your narrative before the market tunes out for good.";
+    const producerNote = isUp
+      ? "The market just responded to your vision. Now, let’s transform that narrative into a content strategy that lands with your ideal clients."
+      : "Your vision is there, but the delivery is getting lost in translation. Let's fix your narrative before the market tunes out for good.";
 
-  const ScoreIcon = isUp ? TrendingUp : TrendingDown;
+    const ScoreIcon = isUp ? TrendingUp : TrendingDown;
 
-  return (
-    <div className="fixed inset-0 bg-black text-white flex items-center justify-center p-4 font-sans z-50 overflow-hidden">
-      <div className={`absolute inset-0 ${isUp ? "bg-emerald-900/10" : "bg-red-900/10"}`}></div>
-      <div className="scanlines"></div>
+    return (
+      <div className="fixed inset-0 bg-black text-white flex items-center justify-center p-4 font-sans z-50 overflow-hidden">
+        <div
+          className={`absolute inset-0 ${
+            isUp ? "bg-emerald-900/10" : "bg-red-900/10"
+          }`}
+        ></div>
+        <div className="scanlines"></div>
 
-      <div className="max-w-2xl w-full bg-zinc-900 p-6 md:p-10 rounded-3xl border-2 border-zinc-800 text-center relative z-10 shadow-2xl flex flex-col max-h-[90vh] overflow-y-auto">
-        <div className="shrink-0 flex justify-center">
-          <div
-            className={`inline-flex items-center justify-center w-20 h-20 rounded-full mb-6 ${
-              isUp ? "bg-emerald-500 text-black" : "bg-red-500 text-white"
-            }`}
-          >
-            <Monitor size={40} />
-          </div>
-        </div>
-
-        {/* Summary Text */}
-        <h2 className="text-3xl md:text-5xl font-black mb-2 uppercase tracking-tight shrink-0">
-          {head}
-        </h2>
-        <p className="text-zinc-400 text-lg md:text-xl mb-8 shrink-0">
-          {subhead}
-        </p>
-
-        {/* Final Score */}
-        <div className="bg-black/40 p-6 rounded-xl border border-zinc-800 mb-6 shrink-0">
-          <div className="text-zinc-500 text-sm uppercase font-bold mb-2">
-            Final Score
-          </div>
-
-          <div className="flex items-center justify-center gap-3">
-            <ScoreIcon
-              size={22}
-              className={isUp ? "text-emerald-400" : "text-red-400"}
-            />
+        <div className="max-w-2xl w-full bg-zinc-900 p-6 md:p-10 rounded-3xl border-2 border-zinc-800 text-center relative z-10 shadow-2xl flex flex-col max-h-[90vh] overflow-y-auto">
+          <div className="shrink-0 flex justify-center">
             <div
-              className={`text-4xl md:text-5xl font-mono font-bold ${
-                isUp ? "text-emerald-400" : "text-red-400"
+              className={`inline-flex items-center justify-center w-20 h-20 rounded-full mb-6 ${
+                isUp ? "bg-emerald-500 text-black" : "bg-red-500 text-white"
               }`}
             >
-              {finalPrice.toFixed(2)}
+              <Monitor size={40} />
             </div>
           </div>
 
-          <div className="mt-3 text-sm font-mono text-zinc-400">
-            {delta >= 0 ? "+" : ""}
-            {delta.toFixed(2)} from {STARTING_STOCK_PRICE.toFixed(2)}
-          </div>
-        </div>
+          {/* Summary Text */}
+          <h2 className="text-3xl md:text-5xl font-black mb-2 uppercase tracking-tight shrink-0">
+            {head}
+          </h2>
+          <p className="text-zinc-400 text-lg md:text-xl mb-8 shrink-0">
+            {subhead}
+          </p>
 
-        {/* Producer's Note */}
-        <div className="bg-zinc-800/50 p-6 rounded-xl text-left mb-8 border border-zinc-700/50 shrink-0">
-          <div className="text-zinc-500 text-xs font-bold uppercase mb-2">
-            Producer&apos;s Note
-          </div>
-          <div className="text-zinc-200 text-base leading-relaxed">
-            {producerNote}
-          </div>
-        </div>
+          {/* Final Score */}
+          <div className="bg-black/40 p-6 rounded-xl border border-zinc-800 mb-6 shrink-0">
+            <div className="text-zinc-500 text-sm uppercase font-bold mb-2">
+              Final Score
+            </div>
 
-        {/* CTA + Replay */}
-        <div className="shrink-0 pb-2 flex flex-col items-center gap-4 w-full">
-          <a
-            href="https://calendar.app.google/F1z9UmnTGLYX3nhk7"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={`group text-black font-black uppercase px-8 py-4 rounded-full tracking-widest flex items-center justify-center gap-3 transition-all hover:scale-[1.02] shadow-xl w-full md:w-auto min-w-[300px] ${
-              isUp ? "bg-emerald-500 hover:bg-emerald-400" : "bg-red-500 hover:bg-red-400"
-            }`}
-          >
-            <Calendar size={20} className="text-zinc-900" />
-            BOOK YOUR EDITORIAL BRIEFING
-          </a>
+            <div className="flex items-center justify-center gap-3">
+              <ScoreIcon
+                size={22}
+                className={isUp ? "text-emerald-400" : "text-red-400"}
+              />
+              <div
+                className={`text-4xl md:text-5xl font-mono font-bold ${
+                  isUp ? "text-emerald-400" : "text-red-400"
+                }`}
+              >
+                {finalPrice.toFixed(2)}
+              </div>
+            </div>
 
-          <button
-            onClick={() => window.location.reload()}
-            className="text-zinc-600 hover:text-white text-xs font-bold uppercase tracking-[0.2em] flex items-center gap-2 transition-colors py-2"
-          >
-            <RefreshCcw size={12} />
-            Replay
-          </button>
+            <div className="mt-3 text-sm font-mono text-zinc-400">
+              {delta >= 0 ? "+" : ""}
+              {delta.toFixed(2)} from {STARTING_STOCK_PRICE.toFixed(2)}
+            </div>
+          </div>
+
+          {/* Producer's Note */}
+          <div className="bg-zinc-800/50 p-6 rounded-xl text-left mb-8 border border-zinc-700/50 shrink-0">
+            <div className="text-zinc-500 text-xs font-bold uppercase mb-2">
+              Producer&apos;s Note
+            </div>
+            <div className="text-zinc-200 text-base leading-relaxed">
+              {producerNote}
+            </div>
+          </div>
+
+          {/* CTA + Replay */}
+          <div className="shrink-0 pb-2 flex flex-col items-center gap-4 w-full">
+            <a
+              href="https://calendar.app.google/F1z9UmnTGLYX3nhk7"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`group text-black font-black uppercase px-8 py-4 rounded-full tracking-widest flex items-center justify-center gap-3 transition-all hover:scale-[1.02] shadow-xl w-full md:w-auto min-w-[300px] ${
+                isUp
+                  ? "bg-emerald-500 hover:bg-emerald-400"
+                  : "bg-red-500 hover:bg-red-400"
+              }`}
+            >
+              <Calendar size={20} className="text-zinc-900" />
+              BOOK YOUR EDITORIAL BRIEFING
+            </a>
+
+            <button
+              onClick={() => window.location.reload()}
+              className="text-zinc-600 hover:text-white text-xs font-bold uppercase tracking-[0.2em] flex items-center gap-2 transition-colors py-2"
+            >
+              <RefreshCcw size={12} />
+              Replay
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-  );
-}
-
+    );
+  }
 
   // INTERVIEW
   return (
@@ -621,3 +643,4 @@ if (phase === GamePhase.SUMMARY) {
 }
 
 export default App;
+
