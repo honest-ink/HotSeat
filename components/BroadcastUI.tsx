@@ -43,7 +43,7 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
 
   const sendAnswerToN8n = async (userAnswer: string) => {
     // Replace this URL with your actual n8n Test URL
-    const webhookUrl = "https://honest-ink.app.n8n.cloud/webhook-test/Hot Seat"; 
+    const webhookUrl = "https://honest-ink.app.n8n.cloud/webhook/Hot Seat"; 
     
     try {
       await fetch(webhookUrl, {
