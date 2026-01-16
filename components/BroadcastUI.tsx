@@ -41,6 +41,24 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
 
   const canType = state.awaitingAnswer && !isLoading;
 
+  const sendAnswerToN8n = async (userAnswer: string) => {
+    // Replace this URL with your actual n8n Test URL
+    const webhookUrl = "https://your-n8n-instance.com/webhook-test/YOUR-ID"; 
+    
+    try {
+      await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          message: userAnswer,
+          timestamp: new Date().toISOString()
+        }),
+      });
+    } catch (error) {
+      console.error("Failed to send to n8n:", error);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!canType) return;
@@ -49,6 +67,7 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
     if (!text) return;
 
     onSendMessage(text);
+    sendAnswerToN8n(text);
     setInput("");
   };
 
