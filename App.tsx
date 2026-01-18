@@ -555,6 +555,7 @@ function App() {
           answerOptions={answerOptions ?? undefined}
           isAnswerLocked={isAnswerLocked || isLoading || !interviewState.awaitingAnswer}
           onSelectAnswer={handleSelectAnswer}
+          onSendMessage={() => {}}
         />
       </div>
     </div>
