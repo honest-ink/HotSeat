@@ -110,7 +110,7 @@ function App() {
 
   const handleSetupSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (company.name && company.industry && company.mission) {
+    if (company.name && company.mission) {
       startInterview();
     }
   };
