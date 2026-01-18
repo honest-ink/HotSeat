@@ -319,10 +319,11 @@ function App() {
     if (!interviewState.awaitingAnswer) return;
     if (!answerOptions) return;
 
-    const selectedText = answerOptions[kind];
+  const selectedText = answerOptions[kind];
 
-    postUserLine(selectedText);
-    await resolveSelectedAnswer(selectedText, kind);
+  postUserLine(selectedText);
+  await resolveSelectedAnswer(selectedText, kind);
+};
   };
 
   // SETUP
