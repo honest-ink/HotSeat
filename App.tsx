@@ -6,11 +6,10 @@ import {
   InterviewState,
   AnswerCategory,
   WorstAnswer,
+  AnswerOptions,
+  AnswerOptionKey,
 } from "./types";
-import {
-  STARTING_STOCK_PRICE,
-  TOTAL_QUESTIONS,
-} from "./constants";
+import { STARTING_STOCK_PRICE, TOTAL_QUESTIONS } from "./constants";
 import * as GeminiService from "./services/geminiService";
 import BroadcastUI from "./components/BroadcastUI";
 import Studio3D from "./components/Studio3D";
@@ -27,12 +26,6 @@ import {
   TrendingDown,
 } from "lucide-react";
 
-type AnswerOptionSet = {
-  good: string;
-  ok: string;
-  evasive: string;
-};
-
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
@@ -48,8 +41,8 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [isJournalistTalking, setIsJournalistTalking] = useState(false);
 
-  // NEW: host-provided options for the current turn
-  const [answerOptions, setAnswerOptions] = useState<AnswerOptionSet | null>(null);
+  // Host-provided options for the current turn
+  const [answerOptions, setAnswerOptions] = useState<AnswerOptions | null>(null);
   const [isAnswerLocked, setIsAnswerLocked] = useState(false);
 
   const [interviewState, setInterviewState] = useState<InterviewState>({
@@ -63,14 +56,13 @@ function App() {
     startedAtMs: undefined,
     questionAskedAtMs: undefined,
 
-    // turn-based
     questionCount: 0,
     maxQuestions: TOTAL_QUESTIONS,
   });
 
   const lastQuestionRef = useRef<string | undefined>(undefined);
 
-  // ---- AUDIO (created on mount, started on "Go Live") ----
+  // ---- AUDIO ----
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -104,7 +96,6 @@ function App() {
     audio.currentTime = 0;
   };
 
-  // keep no-op for existing calls
   const clearTimers = () => {};
 
   const handleSetupSubmit = (e: React.FormEvent) => {
@@ -130,7 +121,6 @@ function App() {
       worstAnswer: undefined,
       startedAtMs: undefined,
       questionAskedAtMs: undefined,
-
       questionCount: 0,
       maxQuestions: TOTAL_QUESTIONS,
     });
@@ -138,25 +128,17 @@ function App() {
     setPhase(GamePhase.INTRO);
     await startAudio();
 
-    // Keep your 3s intro screen
     window.setTimeout(async () => {
       setPhase(GamePhase.INTERVIEW);
       setIsLoading(true);
 
       try {
-        // EXPECTED backend change:
-        // initInterview returns:
-        // { text: string, options: { good, ok, evasive } }
+        // initInterview should return GeminiResponse with .text + .options
         const opening: any = await GeminiService.initInterview(company);
 
-        postJournalistLine(opening.text, {
-          category: undefined,
-          microcopy: undefined,
-          stockImpact: undefined,
-          flash: undefined,
-          tick: undefined,
-        });
+        postJournalistLine(opening.text);
 
+        // store for WorstAnswer attribution
         lastQuestionRef.current = opening.text;
 
         setAnswerOptions(opening.options ?? null);
@@ -174,7 +156,7 @@ function App() {
         console.error(err);
         postJournalistLine(
           "We’ve hit a technical issue. Refresh and try again in a moment.",
-          { category: "bad" as any }
+          { category: "bad" }
         );
         setAnswerOptions(null);
         setInterviewState((prev) => ({ ...prev, awaitingAnswer: false }));
@@ -250,37 +232,27 @@ function App() {
     });
   };
 
-  // NEW: map the 3 buttons to your existing AnswerCategory model
-  const mapButtonToCategory = (kind: keyof AnswerOptionSet): AnswerCategory => {
-    if (kind === "good") return "good" as AnswerCategory;
-    if (kind === "evasive") return "evasive" as AnswerCategory;
-    // ok
-    return "neutral" as AnswerCategory;
-  };
-
   const resolveSelectedAnswer = async (
     selectedText: string,
-    selectedKind: keyof AnswerOptionSet
+    selectedKind: AnswerOptionKey
   ) => {
     setInterviewState((prev) => ({ ...prev, awaitingAnswer: false }));
     setIsAnswerLocked(true);
     setIsLoading(true);
 
-    const selectedCategory = mapButtonToCategory(selectedKind);
+    // IMPORTANT: scoring uses the button picked, not Gemini classification
+    const selectedCategory: AnswerCategory = selectedKind;
 
     try {
-      // EXPECTED backend change:
-      // sendUserAnswer returns:
-      // { text: string, options: { good, ok, evasive }, reason?: string, isContradiction?: boolean }
-      //
-      // For now we still send the text, but scoring uses the selected button category.
+      // sendUserAnswer should return GeminiResponse with .text + next .options
       const response: any = await GeminiService.sendUserAnswer(selectedText);
 
       const ctx = {
         category: selectedCategory,
-        isContradiction: false,
+        isContradiction: Boolean(response?.isContradiction),
         evasiveStreakBefore: interviewState.evasiveStreak,
-        timeLeftMs: undefined,
+        timeLeftMs: 60_000, // you’re not running a per-question timer right now
+        answerText: selectedText,
       };
 
       const scored = scoreAnswer(ctx);
@@ -288,9 +260,9 @@ function App() {
       let finalDelta = clamp(scored.delta, -5, 5);
 
       // Keep movement aligned with the button picked
-      if (selectedCategory === ("good" as any)) finalDelta = Math.max(0, finalDelta);
-      if (selectedCategory === ("neutral" as any)) finalDelta = clamp(finalDelta, 0, 2);
-      if (selectedCategory === ("evasive" as any)) finalDelta = Math.min(0, finalDelta);
+      if (selectedCategory === "good") finalDelta = Math.max(0, finalDelta);
+      if (selectedCategory === "ok") finalDelta = clamp(finalDelta, 0, 1.0);
+      if (selectedCategory === "evasive") finalDelta = Math.min(0, finalDelta);
 
       setInterviewState((prev) => ({
         ...prev,
@@ -309,7 +281,6 @@ function App() {
             }
           : undefined;
 
-      // Host line after your answer (reaction / next question)
       postJournalistLine(response.text, {
         stockImpact: finalDelta,
         microcopy: scored.microcopy,
@@ -320,7 +291,6 @@ function App() {
 
       applyDeltaAndCheck(finalDelta, worst);
 
-      // turn progression
       setInterviewState((prev) => {
         if (prev.outcome === "failure") return prev;
 
@@ -328,13 +298,10 @@ function App() {
           clearTimers();
           stopAudio();
           setPhase(GamePhase.SUMMARY);
-          return {
-            ...prev,
-            awaitingAnswer: false,
-            outcome: "success",
-          };
+          return { ...prev, awaitingAnswer: false, outcome: "success" };
         }
 
+        // Next question text is in host response
         lastQuestionRef.current = response.text;
 
         return {
@@ -345,13 +312,12 @@ function App() {
         };
       });
 
-      // Next turn options
       setAnswerOptions(response.options ?? null);
       setIsAnswerLocked(false);
     } catch (err) {
       console.error(err);
       postJournalistLine("I can’t get a response right now. Try again.", {
-        category: "bad" as any,
+        category: "bad",
       });
       setAnswerOptions(null);
       setIsAnswerLocked(false);
@@ -361,11 +327,8 @@ function App() {
     }
   };
 
-  // NEW: button-driven answer handler (good/ok/evasive)
-  const handleSelectAnswer = async (kind: keyof AnswerOptionSet) => {
+  const handleSelectAnswer = async (kind: AnswerOptionKey) => {
     if (phase !== GamePhase.INTERVIEW) return;
-
-    // block if we’re not ready
     if (isLoading || isAnswerLocked) return;
     if (!interviewState.awaitingAnswer) return;
     if (!answerOptions) return;
@@ -376,9 +339,8 @@ function App() {
     await resolveSelectedAnswer(selectedText, kind);
   };
 
-  // KEEP: typed answers disabled for now (BroadcastUI can still call this prop until you swap UI)
+  // Backwards compatible prop (unused once BroadcastUI is switched)
   const handleUserResponse = async (_text: string) => {
-    // intentionally no-op once buttons exist
     return;
   };
 
@@ -423,9 +385,7 @@ function App() {
                       className="w-full bg-black/50 border border-zinc-700 rounded-lg py-3 pl-10 pr-4 focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none transition-all"
                       placeholder="e.g. OmniCorp"
                       value={company.name}
-                      onChange={(e) =>
-                        setCompany({ ...company, name: e.target.value })
-                      }
+                      onChange={(e) => setCompany({ ...company, name: e.target.value })}
                     />
                   </div>
                 </div>
@@ -439,9 +399,7 @@ function App() {
                     className="w-full bg-black/50 border border-zinc-700 rounded-lg py-3 px-4 focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none transition-all h-24 resize-none"
                     placeholder="We make the world better by..."
                     value={company.mission}
-                    onChange={(e) =>
-                      setCompany({ ...company, mission: e.target.value })
-                    }
+                    onChange={(e) => setCompany({ ...company, mission: e.target.value })}
                   />
                 </div>
 
@@ -460,11 +418,7 @@ function App() {
               </button>
             </div>
 
-            <form
-              id="__setupForm__"
-              onSubmit={handleSetupSubmit}
-              className="hidden"
-            />
+            <form id="__setupForm__" onSubmit={handleSetupSubmit} className="hidden" />
           </div>
         </div>
       </div>
@@ -499,16 +453,14 @@ function App() {
     );
   }
 
-  // SUMMARY
+  // SUMMARY (unchanged)
   if (phase === GamePhase.SUMMARY) {
     const finalPrice = interviewState.stockPrice;
     const delta = Number((finalPrice - STARTING_STOCK_PRICE).toFixed(2));
     const isUp = delta >= 0;
 
     const head = isUp ? "A STAR IS BORN" : "CUT TO COMMERCIAL";
-    const subhead = isUp
-      ? "The board want to congratulate you"
-      : "Confidence collapsed on air.";
+    const subhead = isUp ? "The board want to congratulate you" : "Confidence collapsed on air.";
 
     const producerNote = isUp
       ? "The market just responded to your vision. Now, let’s transform that narrative into a content strategy that lands with your ideal clients."
@@ -518,11 +470,7 @@ function App() {
 
     return (
       <div className="fixed inset-0 bg-black text-white flex items-center justify-center p-4 font-sans z-50 overflow-hidden">
-        <div
-          className={`absolute inset-0 ${
-            isUp ? "bg-emerald-900/10" : "bg-red-900/10"
-          }`}
-        ></div>
+        <div className={`absolute inset-0 ${isUp ? "bg-emerald-900/10" : "bg-red-900/10"}`}></div>
         <div className="scanlines"></div>
 
         <div className="max-w-2xl w-full bg-zinc-900 p-6 md:p-10 rounded-3xl border-2 border-zinc-800 text-center relative z-10 shadow-2xl flex flex-col max-h-[90vh] overflow-y-auto">
@@ -539,14 +487,10 @@ function App() {
           <h2 className="text-3xl md:text-5xl font-black mb-2 uppercase tracking-tight shrink-0">
             {head}
           </h2>
-          <p className="text-zinc-400 text-lg md:text-xl mb-8 shrink-0">
-            {subhead}
-          </p>
+          <p className="text-zinc-400 text-lg md:text-xl mb-8 shrink-0">{subhead}</p>
 
           <div className="bg-black/40 p-6 rounded-xl border border-zinc-800 mb-6 shrink-0">
-            <div className="text-zinc-500 text-sm uppercase font-bold mb-2">
-              Final Score
-            </div>
+            <div className="text-zinc-500 text-sm uppercase font-bold mb-2">Final Score</div>
 
             <div className="flex items-center justify-center gap-3">
               <ScoreIcon
@@ -569,12 +513,8 @@ function App() {
           </div>
 
           <div className="bg-zinc-800/50 p-6 rounded-xl text-left mb-8 border border-zinc-700/50 shrink-0">
-            <div className="text-zinc-500 text-xs font-bold uppercase mb-2">
-              Producer&apos;s Note
-            </div>
-            <div className="text-zinc-200 text-base leading-relaxed">
-              {producerNote}
-            </div>
+            <div className="text-zinc-500 text-xs font-bold uppercase mb-2">Producer&apos;s Note</div>
+            <div className="text-zinc-200 text-base leading-relaxed">{producerNote}</div>
           </div>
 
           <div className="shrink-0 pb-2 flex flex-col items-center gap-4 w-full">
@@ -583,9 +523,7 @@ function App() {
               target="_blank"
               rel="noopener noreferrer"
               className={`group text-black font-black uppercase px-8 py-4 rounded-full tracking-widest flex items-center justify-center gap-3 transition-all hover:scale-[1.02] shadow-xl w-full md:w-auto min-w-[300px] ${
-                isUp
-                  ? "bg-emerald-500 hover:bg-emerald-400"
-                  : "bg-red-500 hover:bg-red-400"
+                isUp ? "bg-emerald-500 hover:bg-emerald-400" : "bg-red-500 hover:bg-red-400"
               }`}
             >
               <Calendar size={20} className="text-zinc-900" />
@@ -637,14 +575,12 @@ function App() {
         <BroadcastUI
           messages={messages}
           state={interviewState}
-          // keep prop for now; BroadcastUI will stop using it once you swap UI
           onSendMessage={handleUserResponse}
           isLoading={isLoading}
           companyName={company.name}
-          // NEW props (you’ll add these to BroadcastUI next)
-          answerOptions={answerOptions}
+          answerOptions={answerOptions ?? undefined}
           isAnswerLocked={isAnswerLocked || isLoading || !interviewState.awaitingAnswer}
-          onSelectAnswer={handleSelectAnswe}
+          onSelectAnswer={handleSelectAnswer}
         />
       </div>
     </div>
