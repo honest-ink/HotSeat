@@ -5,8 +5,8 @@ export enum GamePhase {
   SUMMARY = "SUMMARY",
 }
 
-// Main scoring categories you use in the app/rules
-export type AnswerCategory = "good" | "ok" | "evasive" | "bad";
+// Scoring categories (what rules + server judgement use)
+export type AnswerCategory = "good" | "evasive" | "bad";
 
 // The 3 button choices presented to the user
 export type AnswerOptionKey = "good" | "ok" | "evasive";
@@ -28,6 +28,8 @@ export interface Message {
   text: string;
   sentiment?: "positive" | "negative" | "neutral";
   stockImpact?: number;
+
+  // optional UI decoration for host lines
   category?: AnswerCategory;
   microcopy?: string;
   flash?: "red";
@@ -64,7 +66,7 @@ export interface GeminiResponse {
   // Host spoken line (acknowledgement + next question)
   text: string;
 
-  // Category of the last user answer (or what the server mirrored)
+  // Server judgement of the *previous* user answer (still 3 buckets)
   category: AnswerCategory;
 
   isContradiction: boolean;
@@ -74,6 +76,7 @@ export interface GeminiResponse {
   // NEW: options for the next answer selection
   options?: AnswerOptions;
 
-  // Turn-based completion (you still control this client-side, but keep it)
+  // Keep for compatibility (you still end client-side)
   isInterviewOver: boolean;
 }
+
