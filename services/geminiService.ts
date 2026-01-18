@@ -19,7 +19,7 @@ type LegacyGeminiResponse = {
 
 type NewGeminiResponse = {
   text: string;
-  category: AnswerCategory; // "good" | "evasive" | "bad"
+  category: AnswerCategory; // should now be "good" | "evasive" (but keep broader)
   isContradiction: boolean;
   sentiment?: "positive" | "negative" | "neutral";
   reason?: string;
@@ -32,7 +32,6 @@ function hasOptions(x: any): x is AnswerOptions {
     x &&
     typeof x === "object" &&
     typeof x.good === "string" &&
-    typeof x.ok === "string" &&
     typeof x.evasive === "string"
   );
 }
@@ -108,7 +107,7 @@ export async function initInterview(company: CompanyProfile): Promise<GeminiResp
 
 /**
  * UI tells backend which option button was picked.
- * selectedKey: "good" | "ok" | "evasive"
+ * selectedKey: "good" | "evasive"
  */
 export async function sendUserAnswer(
   answer: string,
