@@ -157,7 +157,7 @@ app.post("/api/init", async (req, res) => {
     if (!ai) return res.status(500).json({ error: "Server missing GEMINI_API_KEY" });
 
     const company = req.body?.company;
-    if (!company?.name || !company?.industry || !company?.mission) {
+    if (!company?.name || !company?.mission) {
       return res.status(400).json({ error: "Missing company fields" });
     }
 
