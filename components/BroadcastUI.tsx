@@ -1,25 +1,15 @@
-import React, { useEffect, useRef, useState } from "react";
-import {
-  Send,
-  TrendingUp,
-  TrendingDown,
-  AlertCircle,
-  Mic,
-} from "lucide-react";
-import { Message, InterviewState } from "../types";
+import React, { useEffect, useRef } from "react";
+import { TrendingUp, TrendingDown, AlertCircle, Mic } from "lucide-react";
+import { Message, InterviewState, AnswerOptions, AnswerOptionKey } from "../types";
 import { FAIL_STOCK_PRICE, NEWS_TICKER_HEADLINES } from "../constants";
 
 interface BroadcastUIProps {
   messages: Message[];
   state: InterviewState;
-  onSendMessage: (text: string) => void;
+  onSendMessage: (text: string, selected: AnswerOptionKey) => void;
   isLoading: boolean;
   companyName: string;
-}
-
-function formatSeconds(ms: number) {
-  const s = Math.max(0, Math.ceil(ms / 1000));
-  return s.toString().padStart(2, "0");
+  options?: AnswerOptions; // NEW: options for the current question
 }
 
 const BroadcastUI: React.FC<BroadcastUIProps> = ({
@@ -28,8 +18,8 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
   onSendMessage,
   isLoading,
   companyName,
+  options,
 }) => {
-  const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom of chat
@@ -39,19 +29,18 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
     }
   }, [messages, isLoading]);
 
-  const canType = state.awaitingAnswer && !isLoading;
+  const canChoose = state.awaitingAnswer && !isLoading && Boolean(options);
 
   const sendAnswerToN8n = async (userAnswer: string) => {
-    // Replace this URL with your actual n8n Test URL
-    const webhookUrl = "https://honest-ink.app.n8n.cloud/webhook/Hot Seat"; 
-    
+    const webhookUrl = "https://honest-ink.app.n8n.cloud/webhook/Hot Seat";
+
     try {
       await fetch(webhookUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           message: userAnswer,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         }),
       });
     } catch (error) {
@@ -59,16 +48,12 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!canType) return;
+  const handlePick = (key: AnswerOptionKey) => {
+    if (!canChoose || !options) return;
 
-    const text = input.trim();
-    if (!text) return;
-
-    onSendMessage(text);
+    const text = options[key];
+    onSendMessage(text, key);
     sendAnswerToN8n(text);
-    setInput("");
   };
 
   const tickerSymbol = companyName.substring(0, 4).toUpperCase() || "XXXX";
@@ -81,7 +66,7 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
   const progressLabel = `${Math.max(0, Math.min(answered, state.maxQuestions))}/${state.maxQuestions}`;
 
   const isFailZone = state.stockPrice < FAIL_STOCK_PRICE;
-  const isNearFail = state.stockPrice < FAIL_STOCK_PRICE + 1.5; // UI warning band
+  const isNearFail = state.stockPrice < FAIL_STOCK_PRICE + 1.5;
 
   return (
     <div className="absolute inset-0 z-10 flex flex-col pointer-events-none h-full max-h-[100dvh]">
@@ -251,86 +236,74 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
             )}
           </div>
 
-          {/* Input Area */}
-          <div className="p-4 md:p-8 pt-0 md:pt-4 pb-[calc(env(safe-area-inset-bottom)+16px)]">
-            <form onSubmit={handleSubmit} className="relative group">
+          {/* Answer Buttons */}
+          <div className="p-4 md:p-8 pt-0 md:pt-4 pb-[calc(env(safe-area-inset-bottom)+16px)] pointer-events-auto">
+            <div className="relative group">
               <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl opacity-50 blur group-hover:opacity-75 transition duration-200"></div>
-              <div className="relative flex items-center h-14 md:h-16 bg-zinc-900 rounded-xl border border-white/10 shadow-2xl overflow-hidden">
-                <input
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  disabled={!canType}
-                  placeholder={
-                    isLoading
-                      ? "Listen to the question..."
-                      : state.awaitingAnswer
-                      ? "Type your response..."
-                      : "Waiting for the next question..."
-                  }
-                  className="flex-1 bg-transparent px-4 h-full text-white placeholder-zinc-500 focus:outline-none font-medium text-base md:text-lg min-w-0"
-                />
-                <button
-                  type="submit"
-                  disabled={!input.trim() || !canType}
-                  className="px-6 h-full bg-white/5 hover:bg-white/10 text-blue-400 disabled:text-zinc-600 disabled:hover:bg-transparent transition-colors border-l border-white/5"
-                >
-                  <Send size={20} className={!canType ? "opacity-0" : "opacity-100"} />
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
 
-        {/* RIGHT COLUMN */}
-        <div className="w-full md:w-1/2 h-full relative z-0 hidden md:block" />
-      </div>
+              <div className="relative bg-zinc-900 rounded-xl border border-white/10 shadow-2xl overflow-hidden p-3 md:p-4">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 mb-3">
+                  {isLoading
+                    ? "Listen to the question..."
+                    : state.awaitingAnswer
+                    ? "Choose your answer"
+                    : "Waiting for the next question..."}
+                </div>
 
-      {/* --- LOWER THIRDS (News Ticker) --- */}
-      <div className="hidden md:block pointer-events-none z-50 fixed bottom-0 left-0 right-0">
-        <div className="flex items-stretch mx-8 lg:mx-16 mb-6 shadow-[0_10px_50px_rgba(0,0,0,0.5)] transform translate-y-2">
-          <div className="w-40 bg-[#002855] flex flex-col items-center justify-center text-white border-r border-white/10 shrink-0 relative overflow-hidden">
-            <div className="absolute inset-0 bg-blue-500/20 animate-pulse"></div>
-            <h1 className="font-black text-3xl italic leading-none relative z-10">
-              GNN
-            </h1>
-            <div className="text-[9px] uppercase tracking-[0.2em] relative z-10 text-blue-200">
-              Business
-            </div>
-          </div>
+                <div className="grid grid-cols-1 gap-2 md:gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handlePick("good")}
+                    disabled={!canChoose}
+                    className={`w-full text-left px-4 py-3 rounded-lg border transition-colors ${
+                      canChoose
+                        ? "bg-emerald-500/15 border-emerald-400/20 hover:bg-emerald-500/20 text-white"
+                        : "bg-white/5 border-white/10 text-zinc-500"
+                    }`}
+                  >
+                    <div className="text-[10px] font-black uppercase tracking-widest text-emerald-300 mb-1">
+                      Good
+                    </div>
+                    <div className="text-sm md:text-base leading-snug font-medium">
+                      {options?.good ?? "…"}
+                    </div>
+                  </button>
 
-          <div className="flex-1 bg-white flex flex-col justify-center px-6 relative overflow-hidden border-l-4 border-yellow-500">
-            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/grid-noise.png')] opacity-10"></div>
+                  <button
+                    type="button"
+                    onClick={() => handlePick("ok")}
+                    disabled={!canChoose}
+                    className={`w-full text-left px-4 py-3 rounded-lg border transition-colors ${
+                      canChoose
+                        ? "bg-white/5 border-white/15 hover:bg-white/10 text-white"
+                        : "bg-white/5 border-white/10 text-zinc-500"
+                    }`}
+                  >
+                    <div className="text-[10px] font-black uppercase tracking-widest text-zinc-200 mb-1">
+                      OK
+                    </div>
+                    <div className="text-sm md:text-base leading-snug font-medium">
+                      {options?.ok ?? "…"}
+                    </div>
+                  </button>
 
-            <div className="flex items-center gap-3 relative z-10">
-              <div className="bg-[#cc0000] text-white text-[10px] font-black px-1.5 py-0.5 uppercase tracking-wide">
-                Breaking News
-              </div>
-              <div className="text-2xl font-black uppercase text-[#002855] leading-none tracking-tight truncate">
-                {companyName} CEO: "We Have Nothing To Hide"
-              </div>
-            </div>
-          </div>
-        </div>
+                  <button
+                    type="button"
+                    onClick={() => handlePick("evasive")}
+                    disabled={!canChoose}
+                    className={`w-full text-left px-4 py-3 rounded-lg border transition-colors ${
+                      canChoose
+                        ? "bg-red-500/10 border-red-400/20 hover:bg-red-500/15 text-white"
+                        : "bg-white/5 border-white/10 text-zinc-500"
+                    }`}
+                  >
+                    <div className="text-[10px] font-black uppercase tracking-widest text-red-300 mb-1">
+                      Evasive
+                    </div>
+                    <div className="text-sm md:text-base leading-snug font-medium">
+                      {options?.evasive ?? "…"}
+                    </div>
+                  </button>
+                </div>
 
-        <div className="bg-[#00152e] text-white h-10 w-full flex items-center relative border-t border-blue-900 overflow-hidden">
-          <div className="absolute left-0 top-0 bottom-0 bg-[#002855] px-8 z-20 flex items-center text-xs font-bold uppercase tracking-widest text-yellow-400 shadow-xl">
-            Market Watch
-          </div>
-          <div className="ticker-wrap w-full">
-            <div className="ticker-move text-sm font-medium flex items-center">
-              {NEWS_TICKER_HEADLINES.map((item, i) => (
-                <span key={i} className="inline-flex items-center px-8">
-                  {item}{" "}
-                  <span className="text-blue-500 mx-4 text-xs">▲ 0.4%</span>
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default BroadcastUI;
+                {!options && state.awaitingAnswer && !isLoadin
