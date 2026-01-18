@@ -8,12 +8,11 @@ export enum GamePhase {
 // Scoring categories (what rules + server judgement use)
 export type AnswerCategory = "good" | "evasive" | "bad";
 
-// The 3 button choices presented to the user
-export type AnswerOptionKey = "good" | "ok" | "evasive";
+// The button choices presented to the user (NOW 2)
+export type AnswerOptionKey = "good" | "evasive";
 
 export type AnswerOptions = {
   good: string;
-  ok: string;
   evasive: string;
 };
 
@@ -66,17 +65,15 @@ export interface GeminiResponse {
   // Host spoken line (acknowledgement + next question)
   text: string;
 
-  // Server judgement of the *previous* user answer (still 3 buckets)
+  // Server judgement of the previous user answer
   category: AnswerCategory;
 
   isContradiction: boolean;
   sentiment?: "positive" | "negative" | "neutral";
   reason?: string;
 
-  // NEW: options for the next answer selection
+  // Options for the next answer selection (NOW 2)
   options?: AnswerOptions;
 
-  // Keep for compatibility (you still end client-side)
   isInterviewOver: boolean;
 }
-
