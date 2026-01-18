@@ -15,6 +15,7 @@ if (!GEMINI_API_KEY) console.error("Missing env var GEMINI_API_KEY");
 const ai = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : null;
 
 // Simple in-memory chat store (will reset if instance restarts)
+// sessionId -> { chatSession, flip }
 const sessions = new Map();
 
 function createSystemInstruction(company) {
@@ -23,7 +24,7 @@ You are Alex Sterling, a sharp, authoritative business journalist and host of th
 
 You are interviewing the CEO of "${company.name}" whose mission is "${company.mission}".
 
-Your job: run a live, high-pressure interview. You ask questions. The CEO answers by choosing one of three prepared answers you generate.
+Your job: run a live, high-pressure interview. You ask questions. The CEO answers by choosing one of TWO prepared answers you generate.
 
 ### Guest identity rules
 - Do NOT invent or assume a personal name for the guest.
@@ -34,20 +35,20 @@ Your job: run a live, high-pressure interview. You ask questions. The CEO answer
 ### Turn format (VERY IMPORTANT)
 For EACH turn you must output:
 1) Your spoken line on-air (short acknowledgement + a question)
-2) Three answer options for the CEO to choose from:
+2) Two answer options for the CEO to choose from:
    - good: clear, direct, credible, specific
-   - ok: plausible but generic, light on detail
    - evasive: dodges the question, spins, avoids specifics
 
 Rules for answer options:
-- Each option must be 1–2 sentences, short enough to fit on a button.
-- All three must answer the SAME question.
-- They must be meaningfully different in quality (good > ok > evasive).
+- Provide EXACTLY two options: "good" and "evasive".
+- Each option must be EXACTLY one sentence.
+- Each option must be MAX 18 words.
+- Both options must answer the SAME question.
+- They must be meaningfully different in quality.
 
 ### Category rules (mirror the selection)
-The client will tell you which option was selected on the prior turn (good/ok/evasive).
+The client will tell you which option was selected on the prior turn (good/evasive).
 - If selected good -> category "good"
-- If selected ok -> category "good" (the client applies a smaller score)
 - If selected evasive -> category "evasive"
 
 Do not invent a different category.
@@ -63,14 +64,13 @@ Output JSON ONLY. No markdown. No extra text.
 The JSON must match this schema:
 {
   "text": "Your spoken response/question to the guest",
-  "category": "good" | "evasive" | "bad",
+  "category": "good" | "evasive",
   "isContradiction": boolean,
   "sentiment": "positive" | "negative" | "neutral",
   "reason": "short explanation (optional)",
   "options": {
-    "good": "string",
-    "ok": "string",
-    "evasive": "string"
+    "good": "string (<=18 words, 1 sentence)",
+    "evasive": "string (<=18 words, 1 sentence)"
   },
   "isInterviewOver": false
 }
@@ -90,23 +90,57 @@ function safeParseJson(text) {
   }
 }
 
+function countWords(s) {
+  return String(s || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+}
+
+function trimToMaxWords(s, maxWords) {
+  const words = String(s || "").trim().split(/\s+/).filter(Boolean);
+  if (words.length <= maxWords) return String(s || "").trim();
+  return words.slice(0, maxWords).join(" ");
+}
+
+// crude but effective: keep only the first sentence.
+function firstSentence(s) {
+  const str = String(s || "").trim();
+  if (!str) return "";
+  const m = str.match(/^(.+?[.!?])(\s|$)/);
+  return (m ? m[1] : str).trim();
+}
+
+function normalizeOptionText(raw, fallback) {
+  let s = raw ? String(raw) : "";
+  s = firstSentence(s);
+  s = trimToMaxWords(s, 18);
+
+  // if model returns nothing useful, fallback
+  if (countWords(s) < 3) s = fallback;
+
+  // final hard cap
+  s = firstSentence(s);
+  s = trimToMaxWords(s, 18);
+  return s;
+}
+
 function normalizeOptions(options) {
-  const good =
-    options?.good ||
-    "We can be specific: we track retention and margin weekly, and we’re improving both quarter by quarter.";
-  const ok =
-    options?.ok ||
-    "We monitor performance regularly and we’re making steady progress across the business.";
-  const evasive =
-    options?.evasive ||
-    "We’re seeing encouraging momentum and we’ll share more detail when the timing is right.";
-  return { good, ok, evasive };
+  const goodFallback =
+    "We track retention and margin weekly, publish results monthly, and act on the data.";
+  const evasiveFallback =
+    "We’re seeing strong momentum, and we’ll share more details when we’re ready.";
+
+  const good = normalizeOptionText(options?.good, goodFallback);
+  const evasive = normalizeOptionText(options?.evasive, evasiveFallback);
+
+  return { good, evasive };
 }
 
 function normalizeHostPayload(parsed) {
   const text =
     parsed?.text ??
-    "Welcome. Let’s start. What is the single biggest risk to your business this year?";
+    "Welcome. What is the single biggest risk to your business this year?";
 
   const category = parsed?.category ?? "good";
 
@@ -122,9 +156,31 @@ function normalizeHostPayload(parsed) {
 }
 
 function selectionToCategory(selectionKey) {
-  if (selectionKey === "evasive") return "evasive";
-  // good OR ok => "good" (client handles smaller move for ok)
-  return "good";
+  return selectionKey === "evasive" ? "evasive" : "good";
+}
+
+/**
+ * Randomise which button is the "good" answer.
+ * We keep the UI keys "good"/"evasive" but we swap their texts.
+ *
+ * flip=false => options.good is actually good, options.evasive is evasive
+ * flip=true  => options.good is actually evasive, options.evasive is good
+ */
+function applyOptionShuffle(payload, flip) {
+  if (!payload?.options) return payload;
+
+  const originalGood = payload.options.good;
+  const originalEvasive = payload.options.evasive;
+
+  if (!flip) return payload;
+
+  return {
+    ...payload,
+    options: {
+      good: originalEvasive,
+      evasive: originalGood,
+    },
+  };
 }
 
 app.get("/api/health", (req, res) => {
@@ -151,7 +207,7 @@ app.post("/api/init", async (req, res) => {
           type: Type.OBJECT,
           properties: {
             text: { type: Type.STRING },
-            category: { type: Type.STRING, enum: ["good", "evasive", "bad"] },
+            category: { type: Type.STRING, enum: ["good", "evasive"] },
             isContradiction: { type: Type.BOOLEAN },
             sentiment: { type: Type.STRING, enum: ["positive", "negative", "neutral"] },
             reason: { type: Type.STRING },
@@ -159,10 +215,9 @@ app.post("/api/init", async (req, res) => {
               type: Type.OBJECT,
               properties: {
                 good: { type: Type.STRING },
-                ok: { type: Type.STRING },
                 evasive: { type: Type.STRING },
               },
-              required: ["good", "ok", "evasive"],
+              required: ["good", "evasive"],
             },
             isInterviewOver: { type: Type.BOOLEAN },
           },
@@ -171,13 +226,16 @@ app.post("/api/init", async (req, res) => {
       },
     });
 
-    sessions.set(sessionId, chatSession);
+    // Random per-session flip. You can also re-randomise each turn if you prefer.
+    const flip = Math.random() < 0.5;
 
-    console.log("[init] session:", sessionId, "company:", company.name);
+    sessions.set(sessionId, { chatSession, flip });
+
+    console.log("[init] session:", sessionId, "company:", company.name, "flip:", flip);
 
     const first = await chatSession.sendMessage({
       message:
-        "Start the show. Introduce the guest to the audience and ask the first opening question. Include three answer options (good/ok/evasive).",
+        "Start the show. Introduce the guest and ask the first opening question. Include two options (good/evasive). Remember: one sentence each, max 18 words.",
     });
 
     const parsed = safeParseJson(first.text || "");
@@ -186,25 +244,32 @@ app.post("/api/init", async (req, res) => {
       return res.status(502).json({ error: "Gemini returned non-JSON", raw: first.text });
     }
 
-    // For the first turn, category is basically irrelevant; set it to "good"
-    const normalized = normalizeHostPayload({ ...parsed, category: "good" });
+    // First turn category isn't meaningful; set to "good" for stability
+    let normalized = normalizeHostPayload({ ...parsed, category: "good" });
+
+    // Apply shuffle so "good" isn't always the better option on the UI
+    normalized = applyOptionShuffle(normalized, flip);
 
     res.json({ sessionId, ...normalized });
   } catch (err) {
     console.error("[init] error:", err);
-    res.status(500).json({
-      text: "Welcome to the show. What’s the clearest way to describe what your company does?",
+
+    // fallback: also randomise
+    const flip = Math.random() < 0.5;
+    const base = {
+      text: "Welcome to the show. In one sentence, what do you do and why should anyone trust you?",
       category: "good",
       isContradiction: false,
       sentiment: "neutral",
       reason: "init fallback",
       options: {
-        good: "We solve a specific problem for a defined customer group, and we measure success by retention and revenue per user.",
-        ok: "We help customers improve outcomes, and we track progress across a few metrics.",
-        evasive: "We’re building something big and the market response so far has been encouraging.",
+        good: "We solve a clear problem, measure outcomes weekly, and publish results monthly.",
+        evasive: "We’re building something big, and early feedback has been very encouraging.",
       },
       isInterviewOver: false,
-    });
+    };
+
+    res.status(500).json({ sessionId: null, ...applyOptionShuffle(base, flip) });
   }
 });
 
@@ -215,22 +280,30 @@ app.post("/api/chat", async (req, res) => {
     const { sessionId, message, selectedKey } = req.body || {};
     if (!sessionId) return res.status(400).json({ error: "Missing sessionId" });
 
-    const chatSession = sessions.get(sessionId);
-    if (!chatSession) {
+    const session = sessions.get(sessionId);
+    if (!session) {
       return res.status(404).json({ error: "Unknown sessionId (server restarted?)" });
     }
+
+    const { chatSession, flip } = session;
 
     const msg = typeof message === "string" ? message : "";
     if (!msg) return res.status(400).json({ error: "Missing message" });
 
-    const sel =
-      selectedKey === "good" || selectedKey === "ok" || selectedKey === "evasive"
-        ? selectedKey
-        : "ok";
+    const sel = selectedKey === "good" || selectedKey === "evasive" ? selectedKey : "good";
 
-    const wrapped = `CEO selected the "${sel}" option. The selected answer was:\n${msg}`;
+    // Work out which QUALITY was selected, taking shuffle into account.
+    // If flip=true, the UI "good" button actually shows the evasive text (and vice versa).
+    const selectedQuality =
+      flip
+        ? sel === "good"
+          ? "evasive"
+          : "good"
+        : sel;
 
-    console.log("[chat]", sessionId, "user:", sel, msg);
+    const wrapped = `CEO clicked "${sel}". Because options may be shuffled, treat the selected QUALITY as "${selectedQuality}". The selected answer text was:\n${msg}`;
+
+    console.log("[chat]", sessionId, "user:", { sel, flip, selectedQuality, msg });
 
     const r = await chatSession.sendMessage({ message: wrapped });
 
@@ -240,28 +313,39 @@ app.post("/api/chat", async (req, res) => {
       return res.status(502).json({ error: "Gemini returned non-JSON", raw: r.text });
     }
 
-    const normalized = normalizeHostPayload(parsed);
+    let normalized = normalizeHostPayload(parsed);
 
     // Hard mirror category on server for safety
-    normalized.category = selectionToCategory(sel);
+    normalized.category = selectionToCategory(selectedQuality);
+
+    // Optional: re-randomise every turn (harder). Uncomment if you want per-turn shuffle.
+    // const newFlip = Math.random() < 0.5;
+    // sessions.set(sessionId, { chatSession, flip: newFlip });
+    // normalized = applyOptionShuffle(normalized, newFlip);
+
+    // If you want shuffle to stay consistent per-session, keep this:
+    normalized = applyOptionShuffle(normalized, flip);
 
     console.log("[chat]", sessionId, "host:", normalized.text);
     res.json(normalized);
   } catch (err) {
     console.error("[chat] error:", err);
-    res.status(500).json({
-      text: "We seem to be having technical difficulties. Let’s keep going. What’s your next concrete step?",
+
+    const flip = Math.random() < 0.5;
+    const base = {
+      text: "We’re having technical difficulties. Answer plainly: what is your next concrete step?",
       category: "good",
       isContradiction: false,
       sentiment: "neutral",
       reason: "chat fallback",
       options: {
-        good: "Our next step is ship the next release, measure adoption, and adjust based on the data.",
-        ok: "We’ll keep improving the product and listening to customers as we go.",
-        evasive: "We’re exploring a few avenues and will share more soon.",
+        good: "Next: ship the release, measure adoption weekly, and cut anything that doesn’t move retention.",
+        evasive: "We’re exploring a few avenues and will share more once plans are final.",
       },
       isInterviewOver: false,
-    });
+    };
+
+    res.status(500).json(applyOptionShuffle(base, flip));
   }
 });
 
@@ -276,5 +360,3 @@ app.get("*", (req, res) => {
 app.listen(port, "0.0.0.0", () => {
   console.log(`Server running on port ${port}`);
 });
-
-
