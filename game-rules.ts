@@ -1,10 +1,12 @@
-export type AnswerCategory = "good" | "evasive" | "bad";
+export type AnswerCategory = "good" | "ok" | "evasive" | "bad";
 
 export type ScoreContext = {
   category: AnswerCategory;
   isContradiction: boolean;
   evasiveStreakBefore: number;
-  timeLeftMs: number;
+
+  // Optional now (your turn-based version doesn’t use a countdown)
+  timeLeftMs?: number;
 
   // Metrics bonus (optional)
   answerText?: string;
@@ -45,7 +47,8 @@ export function scoreAnswer(ctx: ScoreContext): ScoreResult {
     };
   }
 
-  const inFinal15s = ctx.timeLeftMs <= 15_000;
+  const timeLeft = typeof ctx.timeLeftMs === "number" ? ctx.timeLeftMs : Infinity;
+  const inFinal15s = timeLeft <= 15_000;
   const penaltyMultiplier = inFinal15s ? 1.1 : 1;
 
   // streak rule: two evasives in a row => next penalty +0.3
@@ -60,13 +63,32 @@ export function scoreAnswer(ctx: ScoreContext): ScoreResult {
     };
   }
 
+  if (ctx.category === "ok") {
+    // small positive movement
+    let delta = rand(0.2, 0.9);
+
+    // Optional: tiny bonus if the option includes metrics (keeps the old flavour)
+    if (hasMetrics(ctx.answerText)) {
+      delta += 0.3;
+    }
+
+    return {
+      delta: Number(delta.toFixed(2)),
+      microcopy: "Investors cautiously optimistic",
+      tick: "up",
+      nextEvasiveStreak: 0,
+    };
+  }
+
   if (ctx.category === "evasive") {
     const base = rand(-1.5, -0.5);
     let delta = (base - streakPenaltyBonus) * penaltyMultiplier;
 
+    // Metrics can soften evasiveness a bit, but keep it negative overall
     if (hasMetrics(ctx.answerText)) {
-      delta += 0.8;
+      delta += 0.6;
     }
+    delta = Math.min(delta, -0.1);
 
     return {
       delta: Number(delta.toFixed(2)),
