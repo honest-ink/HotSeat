@@ -409,21 +409,6 @@ function App() {
 
                 <div>
                   <label className="block text-xs font-bold uppercase text-zinc-500 mb-2">
-                    Industry
-                  </label>
-                  <input
-                    required
-                    className="w-full bg-black/50 border border-zinc-700 rounded-lg py-3 px-4 focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none transition-all"
-                    placeholder="e.g. Biotechnology, AI Defense, Fast Food"
-                    value={company.industry}
-                    onChange={(e) =>
-                      setCompany({ ...company, industry: e.target.value })
-                    }
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase text-zinc-500 mb-2">
                     Mission Statement (The Pitch)
                   </label>
                   <textarea
