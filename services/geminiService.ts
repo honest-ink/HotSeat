@@ -1,16 +1,15 @@
 // services/geminiService.ts
-import { CompanyProfile, GeminiResponse, AnswerCategory } from "../types";
+import {
+  CompanyProfile,
+  GeminiResponse,
+  AnswerCategory,
+  AnswerOptions,
+  AnswerOptionKey,
+} from "../types";
 
 let sessionId: string | null = null;
 
-type AnswerOptions = {
-  good: string;
-  ok: string;
-  evasive: string;
-};
-
-// The backend may still return the old shape.
-// We normalise it into the current GeminiResponse shape.
+// Legacy backend format (if you ever hit an old deployment)
 type LegacyGeminiResponse = {
   text: string;
   sentiment?: "positive" | "negative" | "neutral";
@@ -20,11 +19,12 @@ type LegacyGeminiResponse = {
 
 type NewGeminiResponse = {
   text: string;
-  category: AnswerCategory | "neutral"; // server now uses neutral in places
+  category: AnswerCategory; // "good" | "evasive" | "bad"
   isContradiction: boolean;
   sentiment?: "positive" | "negative" | "neutral";
   reason?: string;
   options?: AnswerOptions;
+  isInterviewOver?: boolean;
 };
 
 function hasOptions(x: any): x is AnswerOptions {
@@ -42,10 +42,7 @@ function isNewShape(x: any): x is NewGeminiResponse {
     x &&
     typeof x === "object" &&
     typeof x.text === "string" &&
-    (x.category === "good" ||
-      x.category === "evasive" ||
-      x.category === "bad" ||
-      x.category === "neutral") &&
+    (x.category === "good" || x.category === "evasive" || x.category === "bad") &&
     typeof x.isContradiction === "boolean"
   );
 }
@@ -53,31 +50,25 @@ function isNewShape(x: any): x is NewGeminiResponse {
 function normaliseResponse(raw: any): GeminiResponse {
   // Preferred: new backend format
   if (isNewShape(raw)) {
-    // Some parts of your frontend still treat category as AnswerCategory.
-    // If your types don't include "neutral", map it to a safe existing value.
-    const cat: any = raw.category === "neutral" ? "neutral" : raw.category;
-
     return {
       text: raw.text,
-      category: cat,
+      category: raw.category,
       isContradiction: raw.isContradiction,
       sentiment: raw.sentiment,
       reason: raw.reason,
       options: hasOptions(raw.options) ? raw.options : undefined,
-    } as any;
+      isInterviewOver: Boolean(raw.isInterviewOver),
+    };
   }
 
   // Fallback: legacy backend format.
   const legacy = raw as LegacyGeminiResponse;
 
-  const stockChange =
-    typeof legacy.stockChange === "number" ? legacy.stockChange : 0;
+  const stockChange = typeof legacy.stockChange === "number" ? legacy.stockChange : 0;
 
   let category: AnswerCategory = "evasive";
-
   if (stockChange >= 0.5 || legacy.sentiment === "positive") category = "good";
-  else if (stockChange <= -2.5 || legacy.sentiment === "negative")
-    category = "bad";
+  else if (stockChange <= -2.5 || legacy.sentiment === "negative") category = "bad";
   else category = "evasive";
 
   return {
@@ -87,7 +78,8 @@ function normaliseResponse(raw: any): GeminiResponse {
     sentiment: legacy.sentiment,
     reason: "Normalised from legacy Gemini response",
     options: undefined,
-  } as any;
+    isInterviewOver: Boolean(legacy.isInterviewOver),
+  };
 }
 
 async function postJson<T>(url: string, body: unknown): Promise<T> {
@@ -111,29 +103,26 @@ export async function initInterview(company: CompanyProfile): Promise<GeminiResp
   sessionId = typeof data.sessionId === "string" ? data.sessionId : null;
 
   const payload = data?.response ?? data;
-
   return normaliseResponse(payload);
 }
 
 /**
- * Now expects the UI to tell us what the user picked:
- * selectedCategory: "good" | "ok" | "evasive"
+ * UI tells backend which option button was picked.
+ * selectedKey: "good" | "ok" | "evasive"
  */
 export async function sendUserAnswer(
   answer: string,
-  selectedCategory: "good" | "ok" | "evasive"
+  selectedKey: AnswerOptionKey
 ): Promise<GeminiResponse> {
-  if (!sessionId)
-    throw new Error("No sessionId (did you call initInterview first?)");
+  if (!sessionId) throw new Error("No sessionId (did you call initInterview first?)");
 
   const data = await postJson<any>("/api/chat", {
     sessionId,
     message: answer,
-    selectedCategory,
+    selectedKey,
   });
 
   const payload = data?.response ?? data;
-
   return normaliseResponse(payload);
 }
 
