@@ -575,13 +575,13 @@ function App() {
         <BroadcastUI
           messages={messages}
           state={interviewState}
-          onSendMessage={handleUserResponse}
           isLoading={isLoading}
           companyName={company.name}
           answerOptions={answerOptions ?? undefined}
           isAnswerLocked={isAnswerLocked || isLoading || !interviewState.awaitingAnswer}
           onSelectAnswer={handleSelectAnswer}
         />
+
       </div>
     </div>
   );
