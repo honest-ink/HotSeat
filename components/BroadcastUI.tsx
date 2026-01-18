@@ -6,10 +6,21 @@ import { FAIL_STOCK_PRICE, NEWS_TICKER_HEADLINES } from "../constants";
 interface BroadcastUIProps {
   messages: Message[];
   state: InterviewState;
-  onSendMessage: (text: string, selected: AnswerOptionKey) => void;
+
+  // kept for backwards compatibility (App can pass a no-op)
+  onSendMessage?: (text: string) => void;
+
   isLoading: boolean;
   companyName: string;
-  options?: AnswerOptions; // NEW: options for the current question
+
+  // NEW: options for the current question
+  answerOptions?: AnswerOptions;
+
+  // NEW: lock UI while request in flight / not awaiting answer
+  isAnswerLocked: boolean;
+
+  // NEW: tell App which option was picked
+  onSelectAnswer: (key: AnswerOptionKey) => void;
 }
 
 const BroadcastUI: React.FC<BroadcastUIProps> = ({
@@ -18,7 +29,9 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
   onSendMessage,
   isLoading,
   companyName,
-  options,
+  answerOptions,
+  isAnswerLocked,
+  onSelectAnswer,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -29,7 +42,11 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
     }
   }, [messages, isLoading]);
 
-  const canChoose = state.awaitingAnswer && !isLoading && Boolean(options);
+  const canChoose =
+    state.awaitingAnswer &&
+    !isLoading &&
+    !isAnswerLocked &&
+    Boolean(answerOptions);
 
   const sendAnswerToN8n = async (userAnswer: string) => {
     const webhookUrl = "https://honest-ink.app.n8n.cloud/webhook/Hot Seat";
@@ -49,11 +66,17 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
   };
 
   const handlePick = (key: AnswerOptionKey) => {
-    if (!canChoose || !options) return;
+    if (!answerOptions) return;
 
-    const text = options[key];
-    onSendMessage(text, key);
+    const text = answerOptions[key];
+
+    // optional: keep this for logging/legacy
+    onSendMessage?.(text);
+
     sendAnswerToN8n(text);
+
+    // this is what actually drives gameplay now
+    onSelectAnswer(key);
   };
 
   const tickerSymbol = companyName.substring(0, 4).toUpperCase() || "XXXX";
@@ -193,14 +216,12 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
                       {msg.text}
                     </p>
 
-                    {/* Microcopy */}
                     {msg.sender === "journalist" && msg.microcopy && (
                       <div className="mt-2 text-[10px] md:text-xs font-bold uppercase tracking-widest opacity-70">
                         {msg.microcopy}
                       </div>
                     )}
 
-                    {/* Stock Impact Badge (delta points, not %) */}
                     {showImpact && (
                       <div
                         className={`
@@ -265,7 +286,7 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
                       Good
                     </div>
                     <div className="text-sm md:text-base leading-snug font-medium">
-                      {options?.good ?? "…"}
+                      {answerOptions?.good ?? "…"}
                     </div>
                   </button>
 
@@ -283,7 +304,7 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
                       OK
                     </div>
                     <div className="text-sm md:text-base leading-snug font-medium">
-                      {options?.ok ?? "…"}
+                      {answerOptions?.ok ?? "…"}
                     </div>
                   </button>
 
@@ -301,14 +322,20 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
                       Evasive
                     </div>
                     <div className="text-sm md:text-base leading-snug font-medium">
-                      {options?.evasive ?? "…"}
+                      {answerOptions?.evasive ?? "…"}
                     </div>
                   </button>
                 </div>
 
-                {!options && state.awaitingAnswer && !isLoading && (
+                {!answerOptions && state.awaitingAnswer && !isLoading && (
                   <div className="mt-3 text-[11px] text-zinc-500">
                     No answer options received. Refresh and try again.
+                  </div>
+                )}
+
+                {isAnswerLocked && state.awaitingAnswer && (
+                  <div className="mt-3 text-[11px] text-zinc-500">
+                    Locked in…
                   </div>
                 )}
               </div>
@@ -355,7 +382,8 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
             <div className="ticker-move text-sm font-medium flex items-center">
               {NEWS_TICKER_HEADLINES.map((item, i) => (
                 <span key={i} className="inline-flex items-center px-8">
-                  {item} <span className="text-blue-500 mx-4 text-xs">▲ 0.4%</span>
+                  {item}{" "}
+                  <span className="text-blue-500 mx-4 text-xs">▲ 0.4%</span>
                 </span>
               ))}
             </div>
