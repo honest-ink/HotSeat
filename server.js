@@ -15,7 +15,7 @@ if (!GEMINI_API_KEY) console.error("Missing env var GEMINI_API_KEY");
 const ai = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : null;
 
 // Simple in-memory chat store (will reset if instance restarts)
-// sessionId -> { chatSession, flip }
+// sessionId -> chatSession
 const sessions = new Map();
 
 function createSystemInstruction(company) {
@@ -50,7 +50,6 @@ Rules for answer options:
 The client will tell you which option was selected on the prior turn (good/evasive).
 - If selected good -> category "good"
 - If selected evasive -> category "evasive"
-
 Do not invent a different category.
 
 ### Style
@@ -103,7 +102,7 @@ function trimToMaxWords(s, maxWords) {
   return words.slice(0, maxWords).join(" ");
 }
 
-// crude but effective: keep only the first sentence.
+// keep only the first sentence
 function firstSentence(s) {
   const str = String(s || "").trim();
   if (!str) return "";
@@ -137,6 +136,10 @@ function normalizeOptions(options) {
   return { good, evasive };
 }
 
+function randomOptionsOrder() {
+  return Math.random() < 0.5 ? ["good", "evasive"] : ["evasive", "good"];
+}
+
 function normalizeHostPayload(parsed) {
   const text =
     parsed?.text ??
@@ -151,36 +154,13 @@ function normalizeHostPayload(parsed) {
     sentiment: parsed?.sentiment,
     reason: parsed?.reason,
     options: normalizeOptions(parsed?.options),
+    optionsOrder: randomOptionsOrder(),
     isInterviewOver: false,
   };
 }
 
 function selectionToCategory(selectionKey) {
   return selectionKey === "evasive" ? "evasive" : "good";
-}
-
-/**
- * Randomise which button is the "good" answer.
- * We keep the UI keys "good"/"evasive" but we swap their texts.
- *
- * flip=false => options.good is actually good, options.evasive is evasive
- * flip=true  => options.good is actually evasive, options.evasive is good
- */
-function applyOptionShuffle(payload, flip) {
-  if (!payload?.options) return payload;
-
-  const originalGood = payload.options.good;
-  const originalEvasive = payload.options.evasive;
-
-  if (!flip) return payload;
-
-  return {
-    ...payload,
-    options: {
-      good: originalEvasive,
-      evasive: originalGood,
-    },
-  };
 }
 
 app.get("/api/health", (req, res) => {
@@ -226,16 +206,13 @@ app.post("/api/init", async (req, res) => {
       },
     });
 
-    // Random per-session flip. You can also re-randomise each turn if you prefer.
-    const flip = Math.random() < 0.5;
+    sessions.set(sessionId, chatSession);
 
-    sessions.set(sessionId, { chatSession, flip });
-
-    console.log("[init] session:", sessionId, "company:", company.name, "flip:", flip);
+    console.log("[init] session:", sessionId, "company:", company.name);
 
     const first = await chatSession.sendMessage({
       message:
-        "Start the show. Introduce the guest and ask the first opening question. Include two options (good/evasive). Remember: one sentence each, max 18 words.",
+        "Start the show. Introduce the guest and ask the first opening question. Include two options (good/evasive). One sentence each, max 18 words.",
     });
 
     const parsed = safeParseJson(first.text || "");
@@ -245,18 +222,13 @@ app.post("/api/init", async (req, res) => {
     }
 
     // First turn category isn't meaningful; set to "good" for stability
-    let normalized = normalizeHostPayload({ ...parsed, category: "good" });
-
-    // Apply shuffle so "good" isn't always the better option on the UI
-    normalized = applyOptionShuffle(normalized, flip);
+    const normalized = normalizeHostPayload({ ...parsed, category: "good" });
 
     res.json({ sessionId, ...normalized });
   } catch (err) {
     console.error("[init] error:", err);
-
-    // fallback: also randomise
-    const flip = Math.random() < 0.5;
-    const base = {
+    res.status(500).json({
+      sessionId: null,
       text: "Welcome to the show. In one sentence, what do you do and why should anyone trust you?",
       category: "good",
       isContradiction: false,
@@ -266,10 +238,9 @@ app.post("/api/init", async (req, res) => {
         good: "We solve a clear problem, measure outcomes weekly, and publish results monthly.",
         evasive: "We’re building something big, and early feedback has been very encouraging.",
       },
+      optionsOrder: randomOptionsOrder(),
       isInterviewOver: false,
-    };
-
-    res.status(500).json({ sessionId: null, ...applyOptionShuffle(base, flip) });
+    });
   }
 });
 
@@ -280,30 +251,20 @@ app.post("/api/chat", async (req, res) => {
     const { sessionId, message, selectedKey } = req.body || {};
     if (!sessionId) return res.status(400).json({ error: "Missing sessionId" });
 
-    const session = sessions.get(sessionId);
-    if (!session) {
+    const chatSession = sessions.get(sessionId);
+    if (!chatSession) {
       return res.status(404).json({ error: "Unknown sessionId (server restarted?)" });
     }
-
-    const { chatSession, flip } = session;
 
     const msg = typeof message === "string" ? message : "";
     if (!msg) return res.status(400).json({ error: "Missing message" });
 
     const sel = selectedKey === "good" || selectedKey === "evasive" ? selectedKey : "good";
 
-    // Work out which QUALITY was selected, taking shuffle into account.
-    // If flip=true, the UI "good" button actually shows the evasive text (and vice versa).
-    const selectedQuality =
-      flip
-        ? sel === "good"
-          ? "evasive"
-          : "good"
-        : sel;
+    // Tell the model what the CEO selected, so it mirrors category.
+    const wrapped = `CEO selected "${sel}". The selected answer text was:\n${msg}`;
 
-    const wrapped = `CEO clicked "${sel}". Because options may be shuffled, treat the selected QUALITY as "${selectedQuality}". The selected answer text was:\n${msg}`;
-
-    console.log("[chat]", sessionId, "user:", { sel, flip, selectedQuality, msg });
+    console.log("[chat]", sessionId, "user:", sel, msg);
 
     const r = await chatSession.sendMessage({ message: wrapped });
 
@@ -313,26 +274,16 @@ app.post("/api/chat", async (req, res) => {
       return res.status(502).json({ error: "Gemini returned non-JSON", raw: r.text });
     }
 
-    let normalized = normalizeHostPayload(parsed);
+    const normalized = normalizeHostPayload(parsed);
 
     // Hard mirror category on server for safety
-    normalized.category = selectionToCategory(selectedQuality);
-
-    // Optional: re-randomise every turn (harder). Uncomment if you want per-turn shuffle.
-    // const newFlip = Math.random() < 0.5;
-    // sessions.set(sessionId, { chatSession, flip: newFlip });
-    // normalized = applyOptionShuffle(normalized, newFlip);
-
-    // If you want shuffle to stay consistent per-session, keep this:
-    normalized = applyOptionShuffle(normalized, flip);
+    normalized.category = selectionToCategory(sel);
 
     console.log("[chat]", sessionId, "host:", normalized.text);
     res.json(normalized);
   } catch (err) {
     console.error("[chat] error:", err);
-
-    const flip = Math.random() < 0.5;
-    const base = {
+    res.status(500).json({
       text: "We’re having technical difficulties. Answer plainly: what is your next concrete step?",
       category: "good",
       isContradiction: false,
@@ -342,10 +293,9 @@ app.post("/api/chat", async (req, res) => {
         good: "Next: ship the release, measure adoption weekly, and cut anything that doesn’t move retention.",
         evasive: "We’re exploring a few avenues and will share more once plans are final.",
       },
+      optionsOrder: randomOptionsOrder(),
       isInterviewOver: false,
-    };
-
-    res.status(500).json(applyOptionShuffle(base, flip));
+    });
   }
 });
 
