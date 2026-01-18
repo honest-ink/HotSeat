@@ -1,6 +1,11 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { TrendingUp, TrendingDown, AlertCircle, Mic } from "lucide-react";
-import { Message, InterviewState, AnswerOptions, AnswerOptionKey } from "../types";
+import {
+  Message,
+  InterviewState,
+  AnswerOptions,
+  AnswerOptionKey,
+} from "../types";
 import { FAIL_STOCK_PRICE, NEWS_TICKER_HEADLINES } from "../constants";
 
 interface BroadcastUIProps {
@@ -13,13 +18,13 @@ interface BroadcastUIProps {
   isLoading: boolean;
   companyName: string;
 
-  // NEW: options for the current question
+  // options for the current question (now 2: good/evasive)
   answerOptions?: AnswerOptions;
 
-  // NEW: lock UI while request in flight / not awaiting answer
+  // lock UI while request in flight / not awaiting answer
   isAnswerLocked: boolean;
 
-  // NEW: tell App which option was picked
+  // tell App which option was picked
   onSelectAnswer: (key: AnswerOptionKey) => void;
 }
 
@@ -48,9 +53,17 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
     !isAnswerLocked &&
     Boolean(answerOptions);
 
+  // Randomise display order per question so "good" isn't always first.
+  // Uses questionCount as the "turn seed" (stable within a turn).
+  const buttonOrder = useMemo<AnswerOptionKey[]>(() => {
+    const base: AnswerOptionKey[] = ["good", "evasive"];
+    // simple deterministic shuffle: odd turns swap order
+    if ((state.questionCount || 0) % 2 === 1) return base;
+    return base.reverse();
+  }, [state.questionCount]);
+
   const sendAnswerToN8n = async (userAnswer: string) => {
     const webhookUrl = "https://honest-ink.app.n8n.cloud/webhook/Hot Seat";
-
     try {
       await fetch(webhookUrl, {
         method: "POST",
@@ -75,7 +88,7 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
 
     sendAnswerToN8n(text);
 
-    // this is what actually drives gameplay now
+    // drives gameplay
     onSelectAnswer(key);
   };
 
@@ -86,7 +99,10 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
     ? Math.max(0, state.questionCount - 1)
     : state.questionCount;
 
-  const progressLabel = `${Math.max(0, Math.min(answered, state.maxQuestions))}/${state.maxQuestions}`;
+  const progressLabel = `${Math.max(
+    0,
+    Math.min(answered, state.maxQuestions)
+  )}/${state.maxQuestions}`;
 
   const isFailZone = state.stockPrice < FAIL_STOCK_PRICE;
   const isNearFail = state.stockPrice < FAIL_STOCK_PRICE + 1.5;
@@ -127,7 +143,11 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
               }`}
             >
               {state.stockPrice.toFixed(2)}
-              {isFailZone ? <TrendingDown size={18} /> : <TrendingUp size={18} />}
+              {isFailZone ? (
+                <TrendingDown size={18} />
+              ) : (
+                <TrendingUp size={18} />
+              )}
             </div>
           </div>
 
@@ -226,7 +246,11 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
                       <div
                         className={`
                           absolute -bottom-3 -right-2 px-2 py-1 rounded-md text-[10px] font-mono font-bold shadow-sm border border-black/5 flex items-center gap-1
-                          ${msg.stockImpact! > 0 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}
+                          ${
+                            msg.stockImpact! > 0
+                              ? "bg-green-100 text-green-700"
+                              : "bg-red-100 text-red-700"
+                          }
                         `}
                       >
                         {msg.stockImpact! > 0 ? (
@@ -257,7 +281,7 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
             )}
           </div>
 
-          {/* Answer Buttons */}
+          {/* Answer Buttons (2 options, neutral styling, shuffled order) */}
           <div className="p-4 md:p-8 pt-0 md:pt-4 pb-[calc(env(safe-area-inset-bottom)+16px)] pointer-events-auto">
             <div className="relative group">
               <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl opacity-50 blur group-hover:opacity-75 transition duration-200"></div>
@@ -272,59 +296,23 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
                 </div>
 
                 <div className="grid grid-cols-1 gap-2 md:gap-3">
-                  <button
-                    type="button"
-                    onClick={() => handlePick("good")}
-                    disabled={!canChoose}
-                    className={`w-full text-left px-4 py-3 rounded-lg border transition-colors ${
-                      canChoose
-                        ? "bg-emerald-500/15 border-emerald-400/20 hover:bg-emerald-500/20 text-white"
-                        : "bg-white/5 border-white/10 text-zinc-500"
-                    }`}
-                  >
-                    <div className="text-[10px] font-black uppercase tracking-widest text-emerald-300 mb-1">
-                      Good
-                    </div>
-                    <div className="text-sm md:text-base leading-snug font-medium">
-                      {answerOptions?.good ?? "…"}
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handlePick("ok")}
-                    disabled={!canChoose}
-                    className={`w-full text-left px-4 py-3 rounded-lg border transition-colors ${
-                      canChoose
-                        ? "bg-white/5 border-white/15 hover:bg-white/10 text-white"
-                        : "bg-white/5 border-white/10 text-zinc-500"
-                    }`}
-                  >
-                    <div className="text-[10px] font-black uppercase tracking-widest text-zinc-200 mb-1">
-                      OK
-                    </div>
-                    <div className="text-sm md:text-base leading-snug font-medium">
-                      {answerOptions?.ok ?? "…"}
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handlePick("evasive")}
-                    disabled={!canChoose}
-                    className={`w-full text-left px-4 py-3 rounded-lg border transition-colors ${
-                      canChoose
-                        ? "bg-red-500/10 border-red-400/20 hover:bg-red-500/15 text-white"
-                        : "bg-white/5 border-white/10 text-zinc-500"
-                    }`}
-                  >
-                    <div className="text-[10px] font-black uppercase tracking-widest text-red-300 mb-1">
-                      Evasive
-                    </div>
-                    <div className="text-sm md:text-base leading-snug font-medium">
-                      {answerOptions?.evasive ?? "…"}
-                    </div>
-                  </button>
+                  {buttonOrder.map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => handlePick(key)}
+                      disabled={!canChoose}
+                      className={`w-full text-left px-4 py-3 rounded-lg border transition-colors ${
+                        canChoose
+                          ? "bg-white/5 border-white/15 hover:bg-white/10 text-white"
+                          : "bg-white/5 border-white/10 text-zinc-500"
+                      }`}
+                    >
+                      <div className="text-sm md:text-base leading-snug font-medium">
+                        {answerOptions ? answerOptions[key] : "…"}
+                      </div>
+                    </button>
+                  ))}
                 </div>
 
                 {!answerOptions && state.awaitingAnswer && !isLoading && (
@@ -334,9 +322,7 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
                 )}
 
                 {isAnswerLocked && state.awaitingAnswer && (
-                  <div className="mt-3 text-[11px] text-zinc-500">
-                    Locked in…
-                  </div>
+                  <div className="mt-3 text-[11px] text-zinc-500">Locked in…</div>
                 )}
               </div>
             </div>
