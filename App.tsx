@@ -47,7 +47,6 @@ function App() {
   const [phase, setPhase] = useState<GamePhase>(GamePhase.SETUP);
   const [company, setCompany] = useState<CompanyProfile>({
     name: "",
-    industry: "",
     mission: "",
   });
   const [messages, setMessages] = useState<Message[]>([]);
