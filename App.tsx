@@ -8,6 +8,7 @@ import {
   WorstAnswer,
   AnswerOptions,
   AnswerOptionKey,
+  GeminiResponse,
 } from "./types";
 import { STARTING_STOCK_PRICE, TOTAL_QUESTIONS } from "./constants";
 import * as GeminiService from "./services/geminiService";
@@ -30,18 +31,22 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
+// Map button -> scoring bucket (keep categories as 3 buckets for host + rules)
+function optionKeyToScoreCategory(key: AnswerOptionKey): AnswerCategory {
+  if (key === "good") return "good";
+  if (key === "evasive") return "evasive";
+  // ok
+  return "good";
+}
+
 function App() {
   const [phase, setPhase] = useState<GamePhase>(GamePhase.SETUP);
-  const [company, setCompany] = useState<CompanyProfile>({
-    name: "",
-    mission: "",
-  });
+  const [company, setCompany] = useState<CompanyProfile>({ name: "", mission: "" });
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isJournalistTalking, setIsJournalistTalking] = useState(false);
 
-  // Host-provided options for the current turn
   const [answerOptions, setAnswerOptions] = useState<AnswerOptions | null>(null);
   const [isAnswerLocked, setIsAnswerLocked] = useState(false);
 
@@ -55,7 +60,6 @@ function App() {
     worstAnswer: undefined,
     startedAtMs: undefined,
     questionAskedAtMs: undefined,
-
     questionCount: 0,
     maxQuestions: TOTAL_QUESTIONS,
   });
@@ -133,12 +137,9 @@ function App() {
       setIsLoading(true);
 
       try {
-        // initInterview should return GeminiResponse with .text + .options
-        const opening: any = await GeminiService.initInterview(company);
+        const opening = (await GeminiService.initInterview(company)) as GeminiResponse;
 
         postJournalistLine(opening.text);
-
-        // store for WorstAnswer attribution
         lastQuestionRef.current = opening.text;
 
         setAnswerOptions(opening.options ?? null);
@@ -166,9 +167,7 @@ function App() {
     }, 3000);
   };
 
-  const postMessage = (msg: Message) => {
-    setMessages((prev) => [...prev, msg]);
-  };
+  const postMessage = (msg: Message) => setMessages((prev) => [...prev, msg]);
 
   const postJournalistLine = (
     text: string,
@@ -199,11 +198,7 @@ function App() {
   };
 
   const postUserLine = (text: string) => {
-    postMessage({
-      id: Date.now().toString(),
-      sender: "user",
-      text,
-    });
+    postMessage({ id: Date.now().toString(), sender: "user", text });
   };
 
   const applyDeltaAndCheck = (delta: number, worst?: WorstAnswer) => {
@@ -222,13 +217,7 @@ function App() {
       if (delta < 0) audienceSentiment -= 8;
       audienceSentiment = Math.max(0, Math.min(100, audienceSentiment));
 
-      return {
-        ...prev,
-        stockPrice: clamped,
-        lowestPrice,
-        audienceSentiment,
-        worstAnswer,
-      };
+      return { ...prev, stockPrice: clamped, lowestPrice, audienceSentiment, worstAnswer };
     });
   };
 
@@ -240,18 +229,16 @@ function App() {
     setIsAnswerLocked(true);
     setIsLoading(true);
 
-    // IMPORTANT: scoring uses the button picked, not Gemini classification
-    const selectedCategory: AnswerCategory = selectedKind;
+    const scoreCategory = optionKeyToScoreCategory(selectedKind);
 
     try {
-      // sendUserAnswer should return GeminiResponse with .text + next .options
-      const response: any = await GeminiService.sendUserAnswer(selectedText);
+      const response = (await GeminiService.sendUserAnswer(selectedText)) as GeminiResponse;
 
       const ctx = {
-        category: selectedCategory,
+        category: scoreCategory,
         isContradiction: Boolean(response?.isContradiction),
         evasiveStreakBefore: interviewState.evasiveStreak,
-        timeLeftMs: 60_000, // you’re not running a per-question timer right now
+        timeLeftMs: 60_000,
         answerText: selectedText,
       };
 
@@ -259,22 +246,24 @@ function App() {
 
       let finalDelta = clamp(scored.delta, -5, 5);
 
-      // Keep movement aligned with the button picked
-      if (selectedCategory === "good") finalDelta = Math.max(0, finalDelta);
-      if (selectedCategory === "ok") finalDelta = clamp(finalDelta, 0, 1.0);
-      if (selectedCategory === "evasive") finalDelta = Math.min(0, finalDelta);
+      // Button-specific move bands
+      if (selectedKind === "good") finalDelta = clamp(finalDelta, 0.8, 3.5);
+      if (selectedKind === "ok") finalDelta = clamp(finalDelta, 0.1, 0.8);
+      if (selectedKind === "evasive") finalDelta = clamp(finalDelta, -3.5, -0.1);
 
-      setInterviewState((prev) => ({
-        ...prev,
-        evasiveStreak: scored.nextEvasiveStreak,
-      }));
+      // Contradiction should always hurt, regardless of button
+      if (response?.isContradiction) {
+        finalDelta = Math.min(finalDelta, -0.8);
+      }
+
+      setInterviewState((prev) => ({ ...prev, evasiveStreak: scored.nextEvasiveStreak }));
 
       const worst: WorstAnswer | undefined =
         finalDelta < 0
           ? {
               userText: selectedText,
               questionText: lastQuestionRef.current,
-              category: selectedCategory,
+              category: scoreCategory,
               delta: finalDelta,
               reason: response?.reason,
               atTimeLeftMs: 0,
@@ -286,7 +275,7 @@ function App() {
         microcopy: scored.microcopy,
         flash: scored.flash,
         tick: scored.tick,
-        category: selectedCategory,
+        category: scoreCategory,
       });
 
       applyDeltaAndCheck(finalDelta, worst);
@@ -301,7 +290,6 @@ function App() {
           return { ...prev, awaitingAnswer: false, outcome: "success" };
         }
 
-        // Next question text is in host response
         lastQuestionRef.current = response.text;
 
         return {
@@ -316,9 +304,7 @@ function App() {
       setIsAnswerLocked(false);
     } catch (err) {
       console.error(err);
-      postJournalistLine("I can’t get a response right now. Try again.", {
-        category: "bad",
-      });
+      postJournalistLine("I can’t get a response right now. Try again.", { category: "bad" });
       setAnswerOptions(null);
       setIsAnswerLocked(false);
       setInterviewState((prev) => ({ ...prev, awaitingAnswer: true }));
@@ -337,11 +323,6 @@ function App() {
 
     postUserLine(selectedText);
     await resolveSelectedAnswer(selectedText, kind);
-  };
-
-  // Backwards compatible prop (unused once BroadcastUI is switched)
-  const handleUserResponse = async (_text: string) => {
-    return;
   };
 
   // SETUP
@@ -376,10 +357,7 @@ function App() {
                     Company Name
                   </label>
                   <div className="relative">
-                    <Briefcase
-                      className="absolute left-3 top-3.5 text-zinc-500"
-                      size={18}
-                    />
+                    <Briefcase className="absolute left-3 top-3.5 text-zinc-500" size={18} />
                     <input
                       required
                       className="w-full bg-black/50 border border-zinc-700 rounded-lg py-3 pl-10 pr-4 focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none transition-all"
@@ -493,10 +471,7 @@ function App() {
             <div className="text-zinc-500 text-sm uppercase font-bold mb-2">Final Score</div>
 
             <div className="flex items-center justify-center gap-3">
-              <ScoreIcon
-                size={22}
-                className={isUp ? "text-emerald-400" : "text-red-400"}
-              />
+              <ScoreIcon size={22} className={isUp ? "text-emerald-400" : "text-red-400"} />
               <div
                 className={`text-4xl md:text-5xl font-mono font-bold ${
                   isUp ? "text-emerald-400" : "text-red-400"
@@ -581,7 +556,6 @@ function App() {
           isAnswerLocked={isAnswerLocked || isLoading || !interviewState.awaitingAnswer}
           onSelectAnswer={handleSelectAnswer}
         />
-
       </div>
     </div>
   );
