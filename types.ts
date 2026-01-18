@@ -72,8 +72,12 @@ export interface GeminiResponse {
   sentiment?: "positive" | "negative" | "neutral";
   reason?: string;
 
-  // Options for the next answer selection (NOW 2)
+  // Options for the next answer selection (2 buttons)
   options?: AnswerOptions;
+
+  // NEW: controls visual order of buttons, e.g. ["evasive", "good"]
+  optionsOrder?: AnswerOptionKey[];
 
   isInterviewOver: boolean;
 }
+
