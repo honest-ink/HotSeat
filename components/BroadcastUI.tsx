@@ -306,4 +306,64 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
                   </button>
                 </div>
 
-                {!options && state.awaitingAnswer && !isLoadin
+                {!options && state.awaitingAnswer && !isLoading && (
+                  <div className="mt-3 text-[11px] text-zinc-500">
+                    No answer options received. Refresh and try again.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT COLUMN */}
+        <div className="w-full md:w-1/2 h-full relative z-0 hidden md:block" />
+      </div>
+
+      {/* --- LOWER THIRDS (News Ticker) --- */}
+      <div className="hidden md:block pointer-events-none z-50 fixed bottom-0 left-0 right-0">
+        <div className="flex items-stretch mx-8 lg:mx-16 mb-6 shadow-[0_10px_50px_rgba(0,0,0,0.5)] transform translate-y-2">
+          <div className="w-40 bg-[#002855] flex flex-col items-center justify-center text-white border-r border-white/10 shrink-0 relative overflow-hidden">
+            <div className="absolute inset-0 bg-blue-500/20 animate-pulse"></div>
+            <h1 className="font-black text-3xl italic leading-none relative z-10">
+              GNN
+            </h1>
+            <div className="text-[9px] uppercase tracking-[0.2em] relative z-10 text-blue-200">
+              Business
+            </div>
+          </div>
+
+          <div className="flex-1 bg-white flex flex-col justify-center px-6 relative overflow-hidden border-l-4 border-yellow-500">
+            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/grid-noise.png')] opacity-10"></div>
+
+            <div className="flex items-center gap-3 relative z-10">
+              <div className="bg-[#cc0000] text-white text-[10px] font-black px-1.5 py-0.5 uppercase tracking-wide">
+                Breaking News
+              </div>
+              <div className="text-2xl font-black uppercase text-[#002855] leading-none tracking-tight truncate">
+                {companyName} CEO: "We Have Nothing To Hide"
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-[#00152e] text-white h-10 w-full flex items-center relative border-t border-blue-900 overflow-hidden">
+          <div className="absolute left-0 top-0 bottom-0 bg-[#002855] px-8 z-20 flex items-center text-xs font-bold uppercase tracking-widest text-yellow-400 shadow-xl">
+            Market Watch
+          </div>
+          <div className="ticker-wrap w-full">
+            <div className="ticker-move text-sm font-medium flex items-center">
+              {NEWS_TICKER_HEADLINES.map((item, i) => (
+                <span key={i} className="inline-flex items-center px-8">
+                  {item} <span className="text-blue-500 mx-4 text-xs">▲ 0.4%</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default BroadcastUI;
