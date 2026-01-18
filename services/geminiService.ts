@@ -3,8 +3,14 @@ import { CompanyProfile, GeminiResponse, AnswerCategory } from "../types";
 
 let sessionId: string | null = null;
 
-// The backend may still return the old shape (stockChange/sentiment/isInterviewOver).
-// We normalise it into the new GeminiResponse shape your app uses now.
+type AnswerOptions = {
+  good: string;
+  ok: string;
+  evasive: string;
+};
+
+// The backend may still return the old shape.
+// We normalise it into the current GeminiResponse shape.
 type LegacyGeminiResponse = {
   text: string;
   sentiment?: "positive" | "negative" | "neutral";
@@ -14,18 +20,32 @@ type LegacyGeminiResponse = {
 
 type NewGeminiResponse = {
   text: string;
-  category: AnswerCategory;
+  category: AnswerCategory | "neutral"; // server now uses neutral in places
   isContradiction: boolean;
   sentiment?: "positive" | "negative" | "neutral";
   reason?: string;
+  options?: AnswerOptions;
 };
+
+function hasOptions(x: any): x is AnswerOptions {
+  return (
+    x &&
+    typeof x === "object" &&
+    typeof x.good === "string" &&
+    typeof x.ok === "string" &&
+    typeof x.evasive === "string"
+  );
+}
 
 function isNewShape(x: any): x is NewGeminiResponse {
   return (
     x &&
     typeof x === "object" &&
     typeof x.text === "string" &&
-    (x.category === "good" || x.category === "evasive" || x.category === "bad") &&
+    (x.category === "good" ||
+      x.category === "evasive" ||
+      x.category === "bad" ||
+      x.category === "neutral") &&
     typeof x.isContradiction === "boolean"
   );
 }
@@ -33,24 +53,31 @@ function isNewShape(x: any): x is NewGeminiResponse {
 function normaliseResponse(raw: any): GeminiResponse {
   // Preferred: new backend format
   if (isNewShape(raw)) {
+    // Some parts of your frontend still treat category as AnswerCategory.
+    // If your types don't include "neutral", map it to a safe existing value.
+    const cat: any = raw.category === "neutral" ? "neutral" : raw.category;
+
     return {
       text: raw.text,
-      category: raw.category,
+      category: cat,
       isContradiction: raw.isContradiction,
       sentiment: raw.sentiment,
       reason: raw.reason,
-    };
+      options: hasOptions(raw.options) ? raw.options : undefined,
+    } as any;
   }
 
   // Fallback: legacy backend format.
-  // Map legacy sentiment/stockChange into a rough category.
   const legacy = raw as LegacyGeminiResponse;
 
-  const stockChange = typeof legacy.stockChange === "number" ? legacy.stockChange : 0;
+  const stockChange =
+    typeof legacy.stockChange === "number" ? legacy.stockChange : 0;
+
   let category: AnswerCategory = "evasive";
 
   if (stockChange >= 0.5 || legacy.sentiment === "positive") category = "good";
-  else if (stockChange <= -2.5 || legacy.sentiment === "negative") category = "bad";
+  else if (stockChange <= -2.5 || legacy.sentiment === "negative")
+    category = "bad";
   else category = "evasive";
 
   return {
@@ -59,7 +86,8 @@ function normaliseResponse(raw: any): GeminiResponse {
     isContradiction: false,
     sentiment: legacy.sentiment,
     reason: "Normalised from legacy Gemini response",
-  };
+    options: undefined,
+  } as any;
 }
 
 async function postJson<T>(url: string, body: unknown): Promise<T> {
@@ -80,26 +108,35 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
 export async function initInterview(company: CompanyProfile): Promise<GeminiResponse> {
   const data = await postJson<any>("/api/init", { company });
 
-  // current backend returns { sessionId, ...payload }
   sessionId = typeof data.sessionId === "string" ? data.sessionId : null;
 
-  // Some backends may return the message under a nested key.
   const payload = data?.response ?? data;
 
   return normaliseResponse(payload);
 }
 
-export async function sendUserAnswer(answer: string): Promise<GeminiResponse> {
-  if (!sessionId) throw new Error("No sessionId (did you call initInterview first?)");
+/**
+ * Now expects the UI to tell us what the user picked:
+ * selectedCategory: "good" | "ok" | "evasive"
+ */
+export async function sendUserAnswer(
+  answer: string,
+  selectedCategory: "good" | "ok" | "evasive"
+): Promise<GeminiResponse> {
+  if (!sessionId)
+    throw new Error("No sessionId (did you call initInterview first?)");
 
-  const data = await postJson<any>("/api/chat", { sessionId, message: answer });
+  const data = await postJson<any>("/api/chat", {
+    sessionId,
+    message: answer,
+    selectedCategory,
+  });
 
   const payload = data?.response ?? data;
 
   return normaliseResponse(payload);
 }
 
-// Optional helper if you ever want to restart cleanly in-app (without reload)
 export function resetSession() {
   sessionId = null;
 }
