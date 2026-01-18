@@ -4,13 +4,11 @@ import {
   CompanyProfile,
   Message,
   InterviewState,
-  GeminiResponse,
   AnswerCategory,
   WorstAnswer,
 } from "./types";
 import {
   STARTING_STOCK_PRICE,
-  FAIL_STOCK_PRICE,
   TOTAL_QUESTIONS,
 } from "./constants";
 import * as GeminiService from "./services/geminiService";
@@ -23,22 +21,18 @@ import {
   Monitor,
   Briefcase,
   Play,
-  AlertCircle,
   Calendar,
   RefreshCcw,
   TrendingUp,
   TrendingDown,
 } from "lucide-react";
 
-function randInt(min: number, max: number) {
-  return Math.floor(min + Math.random() * (max - min + 1));
-}
+type AnswerOptionSet = {
+  good: string;
+  ok: string;
+  evasive: string;
+};
 
-function pickOne<T>(arr: T[]) {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
-
-// ADDED: small clamp helper for stock moves
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
@@ -49,9 +43,14 @@ function App() {
     name: "",
     mission: "",
   });
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isJournalistTalking, setIsJournalistTalking] = useState(false);
+
+  // NEW: host-provided options for the current turn
+  const [answerOptions, setAnswerOptions] = useState<AnswerOptionSet | null>(null);
+  const [isAnswerLocked, setIsAnswerLocked] = useState(false);
 
   const [interviewState, setInterviewState] = useState<InterviewState>({
     stockPrice: STARTING_STOCK_PRICE,
@@ -105,21 +104,21 @@ function App() {
     audio.currentTime = 0;
   };
 
-  // timer cleanup no longer needed, but keep a no-op for existing calls
+  // keep no-op for existing calls
   const clearTimers = () => {};
 
   const handleSetupSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (company.name && company.mission) {
-      startInterview();
-    }
+    if (company.name && company.mission) startInterview();
   };
 
   const startInterview = async () => {
-    // reset state for a clean run
     clearTimers();
     setMessages([]);
     lastQuestionRef.current = undefined;
+
+    setAnswerOptions(null);
+    setIsAnswerLocked(false);
 
     setInterviewState({
       stockPrice: STARTING_STOCK_PRICE,
@@ -132,13 +131,11 @@ function App() {
       startedAtMs: undefined,
       questionAskedAtMs: undefined,
 
-      // turn-based
       questionCount: 0,
       maxQuestions: TOTAL_QUESTIONS,
     });
 
     setPhase(GamePhase.INTRO);
-
     await startAudio();
 
     // Keep your 3s intro screen
@@ -147,9 +144,11 @@ function App() {
       setIsLoading(true);
 
       try {
-        const opening = await GeminiService.initInterview(company);
+        // EXPECTED backend change:
+        // initInterview returns:
+        // { text: string, options: { good, ok, evasive } }
+        const opening: any = await GeminiService.initInterview(company);
 
-        // first journalist message = first question delivered
         postJournalistLine(opening.text, {
           category: undefined,
           microcopy: undefined,
@@ -158,8 +157,11 @@ function App() {
           tick: undefined,
         });
 
-        // mark first turn as active
         lastQuestionRef.current = opening.text;
+
+        setAnswerOptions(opening.options ?? null);
+        setIsAnswerLocked(false);
+
         setInterviewState((prev) => ({
           ...prev,
           startedAtMs: Date.now(),
@@ -172,8 +174,9 @@ function App() {
         console.error(err);
         postJournalistLine(
           "We’ve hit a technical issue. Refresh and try again in a moment.",
-          { category: "bad" }
+          { category: "bad" as any }
         );
+        setAnswerOptions(null);
         setInterviewState((prev) => ({ ...prev, awaitingAnswer: false }));
       } finally {
         setIsLoading(false);
@@ -229,11 +232,9 @@ function App() {
 
       let worstAnswer = prev.worstAnswer;
       if (worst && (worstAnswer == null || worst.delta > worstAnswer.delta)) {
-        // "worst" has negative delta; smaller means worse (e.g. -4 < -2).
         worstAnswer = worst;
       }
 
-      // cosmetic sentiment (optional)
       let audienceSentiment = prev.audienceSentiment;
       if (delta > 0) audienceSentiment += 6;
       if (delta < 0) audienceSentiment -= 8;
@@ -249,35 +250,48 @@ function App() {
     });
   };
 
-  const resolveAnswer = async (userText: string) => {
-    setInterviewState((prev) => ({ ...prev, awaitingAnswer: false }));
+  // NEW: map the 3 buttons to your existing AnswerCategory model
+  const mapButtonToCategory = (kind: keyof AnswerOptionSet): AnswerCategory => {
+    if (kind === "good") return "good" as AnswerCategory;
+    if (kind === "evasive") return "evasive" as AnswerCategory;
+    // ok
+    return "neutral" as AnswerCategory;
+  };
 
+  const resolveSelectedAnswer = async (
+    selectedText: string,
+    selectedKind: keyof AnswerOptionSet
+  ) => {
+    setInterviewState((prev) => ({ ...prev, awaitingAnswer: false }));
+    setIsAnswerLocked(true);
     setIsLoading(true);
 
-    try {
-      const response = await GeminiService.sendUserAnswer(userText);
+    const selectedCategory = mapButtonToCategory(selectedKind);
 
-      // compute delta using your rules
+    try {
+      // EXPECTED backend change:
+      // sendUserAnswer returns:
+      // { text: string, options: { good, ok, evasive }, reason?: string, isContradiction?: boolean }
+      //
+      // For now we still send the text, but scoring uses the selected button category.
+      const response: any = await GeminiService.sendUserAnswer(selectedText);
+
       const ctx = {
-        category: response.category,
-        isContradiction: response.isContradiction,
+        category: selectedCategory,
+        isContradiction: false,
         evasiveStreakBefore: interviewState.evasiveStreak,
         timeLeftMs: undefined,
       };
 
       const scored = scoreAnswer(ctx);
 
-      // Market move comes only from your deterministic rules now
       let finalDelta = clamp(scored.delta, -5, 5);
 
-      // Optional consistency guard: don't allow "good" to drop or "bad" to rise unless contradiction
-      if (!response.isContradiction) {
-        if (response.category === "good") finalDelta = Math.max(0, finalDelta);
-        if (response.category === "bad") finalDelta = Math.min(0, finalDelta);
-        if (response.category === "evasive") finalDelta = clamp(finalDelta, -1, 1);
-      }
+      // Keep movement aligned with the button picked
+      if (selectedCategory === ("good" as any)) finalDelta = Math.max(0, finalDelta);
+      if (selectedCategory === ("neutral" as any)) finalDelta = clamp(finalDelta, 0, 2);
+      if (selectedCategory === ("evasive" as any)) finalDelta = Math.min(0, finalDelta);
 
-      // update evasive streak + apply delta
       setInterviewState((prev) => ({
         ...prev,
         evasiveStreak: scored.nextEvasiveStreak,
@@ -286,32 +300,30 @@ function App() {
       const worst: WorstAnswer | undefined =
         finalDelta < 0
           ? {
-              userText,
+              userText: selectedText,
               questionText: lastQuestionRef.current,
-              category: response.isContradiction ? "bad" : response.category,
+              category: selectedCategory,
               delta: finalDelta,
-              reason: response.reason,
+              reason: response?.reason,
               atTimeLeftMs: 0,
             }
           : undefined;
 
-      // journalist replies (your current backend returns a line here)
+      // Host line after your answer (reaction / next question)
       postJournalistLine(response.text, {
         stockImpact: finalDelta,
         microcopy: scored.microcopy,
         flash: scored.flash,
         tick: scored.tick,
-        category: response.category,
+        category: selectedCategory,
       });
 
       applyDeltaAndCheck(finalDelta, worst);
 
-      // turn-based progression + success condition
+      // turn progression
       setInterviewState((prev) => {
-        // If we already failed, phase is SUMMARY and awaitingAnswer is false.
         if (prev.outcome === "failure") return prev;
 
-        // If we just answered the last question, end the interview successfully.
         if (prev.questionCount >= prev.maxQuestions) {
           clearTimers();
           stopAudio();
@@ -323,8 +335,6 @@ function App() {
           };
         }
 
-        // Otherwise, advance to next question turn.
-        // The backend response text above is assumed to contain the next prompt.
         lastQuestionRef.current = response.text;
 
         return {
@@ -334,28 +344,42 @@ function App() {
           questionAskedAtMs: Date.now(),
         };
       });
+
+      // Next turn options
+      setAnswerOptions(response.options ?? null);
+      setIsAnswerLocked(false);
     } catch (err) {
       console.error(err);
       postJournalistLine("I can’t get a response right now. Try again.", {
-        category: "bad",
+        category: "bad" as any,
       });
+      setAnswerOptions(null);
+      setIsAnswerLocked(false);
       setInterviewState((prev) => ({ ...prev, awaitingAnswer: true }));
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleUserResponse = async (text: string) => {
-    // only accept if awaiting answer + not loading + still in interview
+  // NEW: button-driven answer handler (good/ok/evasive)
+  const handleSelectAnswer = async (kind: keyof AnswerOptionSet) => {
     if (phase !== GamePhase.INTERVIEW) return;
 
-    setInterviewState((prev) => {
-      if (!prev.awaitingAnswer) return prev;
-      return prev;
-    });
+    // block if we’re not ready
+    if (isLoading || isAnswerLocked) return;
+    if (!interviewState.awaitingAnswer) return;
+    if (!answerOptions) return;
 
-    postUserLine(text);
-    await resolveAnswer(text);
+    const selectedText = answerOptions[kind];
+
+    postUserLine(selectedText);
+    await resolveSelectedAnswer(selectedText, kind);
+  };
+
+  // KEEP: typed answers disabled for now (BroadcastUI can still call this prop until you swap UI)
+  const handleUserResponse = async (_text: string) => {
+    // intentionally no-op once buttons exist
+    return;
   };
 
   // SETUP
@@ -512,7 +536,6 @@ function App() {
             </div>
           </div>
 
-          {/* Summary Text */}
           <h2 className="text-3xl md:text-5xl font-black mb-2 uppercase tracking-tight shrink-0">
             {head}
           </h2>
@@ -520,7 +543,6 @@ function App() {
             {subhead}
           </p>
 
-          {/* Final Score */}
           <div className="bg-black/40 p-6 rounded-xl border border-zinc-800 mb-6 shrink-0">
             <div className="text-zinc-500 text-sm uppercase font-bold mb-2">
               Final Score
@@ -546,7 +568,6 @@ function App() {
             </div>
           </div>
 
-          {/* Producer's Note */}
           <div className="bg-zinc-800/50 p-6 rounded-xl text-left mb-8 border border-zinc-700/50 shrink-0">
             <div className="text-zinc-500 text-xs font-bold uppercase mb-2">
               Producer&apos;s Note
@@ -556,7 +577,6 @@ function App() {
             </div>
           </div>
 
-          {/* CTA + Replay */}
           <div className="shrink-0 pb-2 flex flex-col items-center gap-4 w-full">
             <a
               href="https://www.honest-ink.com/contact"
@@ -617,9 +637,14 @@ function App() {
         <BroadcastUI
           messages={messages}
           state={interviewState}
+          // keep prop for now; BroadcastUI will stop using it once you swap UI
           onSendMessage={handleUserResponse}
           isLoading={isLoading}
           companyName={company.name}
+          // NEW props (you’ll add these to BroadcastUI next)
+          answerOptions={answerOptions}
+          isAnswerLocked={isAnswerLocked || isLoading || !interviewState.awaitingAnswer}
+          onSelectAnswer={handleSelectAnswe}
         />
       </div>
     </div>
@@ -627,4 +652,3 @@ function App() {
 }
 
 export default App;
-
