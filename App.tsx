@@ -232,8 +232,8 @@ function App() {
     const scoreCategory = optionKeyToScoreCategory(selectedKind);
 
     try {
-      const response = (await GeminiService.sendUserAnswer(selectedText)) as GeminiResponse;
-
+      const response: any = await GeminiService.sendUserAnswer(selectedText, selectedKind);
+      
       const ctx = {
         category: scoreCategory,
         isContradiction: Boolean(response?.isContradiction),
