@@ -31,12 +31,9 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
-// Map button -> scoring bucket (keep categories as 3 buckets for host + rules)
+// With 2 options, the score bucket is just the key.
 function optionKeyToScoreCategory(key: AnswerOptionKey): AnswerCategory {
-  if (key === "good") return "good";
-  if (key === "evasive") return "evasive";
-  // ok
-  return "good";
+  return key === "good" ? "good" : "evasive";
 }
 
 function App() {
@@ -48,6 +45,7 @@ function App() {
   const [isJournalistTalking, setIsJournalistTalking] = useState(false);
 
   const [answerOptions, setAnswerOptions] = useState<AnswerOptions | null>(null);
+  const [optionsOrder, setOptionsOrder] = useState<AnswerOptionKey[] | null>(null);
   const [isAnswerLocked, setIsAnswerLocked] = useState(false);
 
   const [interviewState, setInterviewState] = useState<InterviewState>({
@@ -113,6 +111,7 @@ function App() {
     lastQuestionRef.current = undefined;
 
     setAnswerOptions(null);
+    setOptionsOrder(null);
     setIsAnswerLocked(false);
 
     setInterviewState({
@@ -143,6 +142,7 @@ function App() {
         lastQuestionRef.current = opening.text;
 
         setAnswerOptions(opening.options ?? null);
+        setOptionsOrder(opening.optionsOrder ?? null);
         setIsAnswerLocked(false);
 
         setInterviewState((prev) => ({
@@ -160,6 +160,7 @@ function App() {
           { category: "bad" }
         );
         setAnswerOptions(null);
+        setOptionsOrder(null);
         setInterviewState((prev) => ({ ...prev, awaitingAnswer: false }));
       } finally {
         setIsLoading(false);
@@ -221,19 +222,16 @@ function App() {
     });
   };
 
-  const resolveSelectedAnswer = async (
-    selectedText: string,
-    selectedKind: AnswerOptionKey
-  ) => {
+  const resolveSelectedAnswer = async (selectedText: string, selectedKey: AnswerOptionKey) => {
     setInterviewState((prev) => ({ ...prev, awaitingAnswer: false }));
     setIsAnswerLocked(true);
     setIsLoading(true);
 
-    const scoreCategory = optionKeyToScoreCategory(selectedKind);
+    const scoreCategory = optionKeyToScoreCategory(selectedKey);
 
     try {
-      const response: any = await GeminiService.sendUserAnswer(selectedText, selectedKind);
-      
+      const response: any = await GeminiService.sendUserAnswer(selectedText, selectedKey);
+
       const ctx = {
         category: scoreCategory,
         isContradiction: Boolean(response?.isContradiction),
@@ -246,12 +244,11 @@ function App() {
 
       let finalDelta = clamp(scored.delta, -5, 5);
 
-      // Button-specific move bands
-      if (selectedKind === "good") finalDelta = clamp(finalDelta, 0.8, 3.5);
-      if (selectedKind === "ok") finalDelta = clamp(finalDelta, 0.1, 0.8);
-      if (selectedKind === "evasive") finalDelta = clamp(finalDelta, -3.5, -0.1);
+      // Button-specific move bands (2-option version)
+      if (selectedKey === "good") finalDelta = clamp(finalDelta, 0.8, 3.5);
+      if (selectedKey === "evasive") finalDelta = clamp(finalDelta, -3.5, -0.1);
 
-      // Contradiction should always hurt, regardless of button
+      // Contradiction always hurts
       if (response?.isContradiction) {
         finalDelta = Math.min(finalDelta, -0.8);
       }
@@ -301,11 +298,13 @@ function App() {
       });
 
       setAnswerOptions(response.options ?? null);
+      setOptionsOrder(response.optionsOrder ?? null);
       setIsAnswerLocked(false);
     } catch (err) {
       console.error(err);
       postJournalistLine("I can’t get a response right now. Try again.", { category: "bad" });
       setAnswerOptions(null);
+      setOptionsOrder(null);
       setIsAnswerLocked(false);
       setInterviewState((prev) => ({ ...prev, awaitingAnswer: true }));
     } finally {
@@ -313,17 +312,16 @@ function App() {
     }
   };
 
-  const handleSelectAnswer = async (kind: AnswerOptionKey) => {
+  const handleSelectAnswer = async (key: AnswerOptionKey) => {
     if (phase !== GamePhase.INTERVIEW) return;
     if (isLoading || isAnswerLocked) return;
     if (!interviewState.awaitingAnswer) return;
     if (!answerOptions) return;
 
-  const selectedText = answerOptions[kind];
+    const selectedText = answerOptions[key];
 
-  postUserLine(selectedText);
-  await resolveSelectedAnswer(selectedText, kind);
-};
+    postUserLine(selectedText);
+    await resolveSelectedAnswer(selectedText, key);
   };
 
   // SETUP
@@ -345,9 +343,7 @@ function App() {
 
               <p className="text-zinc-400 text-base md:text-lg">
                 You're live on the nation&apos;s toughest news channel.{" "}
-                <span className="text-yellow-500 font-semibold">
-                  Every answer moves markets.
-                </span>
+                <span className="text-yellow-500 font-semibold">Every answer moves markets.</span>
               </p>
             </div>
 
@@ -554,6 +550,7 @@ function App() {
           isLoading={isLoading}
           companyName={company.name}
           answerOptions={answerOptions ?? undefined}
+          optionsOrder={optionsOrder ?? undefined}
           isAnswerLocked={isAnswerLocked || isLoading || !interviewState.awaitingAnswer}
           onSelectAnswer={handleSelectAnswer}
           onSendMessage={() => {}}
@@ -564,3 +561,4 @@ function App() {
 }
 
 export default App;
+
