@@ -309,6 +309,73 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
+// ---- Producer Note Summary Endpoint ----
+app.post("/api/summary", async (req, res) => {
+  try {
+    const { sessionId, wrongAnswerText, trapType } = req.body;
+
+    // If the user played perfectly (no wrong answers), return a generic "Perfect Game" note
+    if (!wrongAnswerText) {
+      return res.json({
+        producerNote: "Flawless execution. You stayed on message, satisfied the investors, and controlled the narrative perfectly. Now, let’s turn this momentum into a long-term content strategy."
+      });
+    }
+
+    const chatSession = sessions.get(sessionId);
+    // If session is lost (server restart), fallback to generic note
+    if (!chatSession) {
+      return res.json({
+        producerNote: "The market responded to your vision. Now, let’s transform that narrative into a content strategy that lands with your ideal clients."
+      });
+    }
+
+    const prompt = `
+      The interview is over. I need a "Producer's Note" based on the user's mistake.
+      
+      The user selected this EVASIVE answer: "${wrongAnswerText}"
+      
+      First, identify which "Trap" this answer falls into:
+      1. Emotional Trap (focuses on feelings/values over data)
+      2. Process Trap (focuses on hard work/internal methods over results)
+      3. Status Trap (focuses on market position/reputation over specifics)
+      
+      Then, output JSON ONLY. Format:
+      {
+        "producerNote": "Great work! One thing for future interviews: The market reacted negatively to '${wrongAnswerText}'. That's usually because you [INSERT REASON]. Next time try and always link your answers to something tangible you're doing for a specific consumer."
+      }
+
+      Choose the [INSERT REASON] based on the identified trap:
+      - If Emotional: "prioritized 'vibes' and mission statements over the verifiable data points investors crave"
+      - If Process: "confused internal activity with external value, focusing on 'how hard you work' rather than 'what you delivered'"
+      - If Status: "leaned on your legacy and market size instead of proving you are still innovating today"
+    `;
+
+    const result = await chatSession.sendMessage(prompt);
+    
+    // Safety parsing
+    let text = result.response.text();
+    // Strip markdown if Gemini adds it
+    text = text.replace(/```json/g, "").replace(/```/g, "").trim(); 
+    
+    const parsed = safeParseJson(text);
+    // If parsing fails, fall back to generic
+    if (!parsed) {
+        return res.json({
+             producerNote: "Great effort. You had strong moments, but watch out for evasive answers—investors punish vague responses. Let's tighten your data story for next time."
+        });
+    }
+
+    res.json(parsed);
+
+  } catch (err) {
+    console.error("[summary] error:", err);
+    // Fallback if AI fails
+    res.json({
+      producerNote: "Great effort. You had strong moments, but watch out for evasive answers—investors punish vague responses. Let's tighten your data story for next time."
+    });
+  }
+});
+
 // ---- Static hosting ----
 app.use(express.static(path.join(__dirname, "dist")));
 
