@@ -2,8 +2,10 @@
 const express = require("express");
 const path = require("path");
 const crypto = require("crypto");
-// USES THE NEWER SDK YOU HAVE INSTALLED:
-const { GoogleGenAI } = require("@google/genai");
+
+// CRITICAL: We use the STABLE SDK now. 
+// Ensure you ran: npm install @google/generative-ai
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const app = express();
 const port = process.env.PORT || 8080;
@@ -12,8 +14,8 @@ app.use(express.json({ limit: "1mb" }));
 
 // ---- Gemini setup ----
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-// The constructor for @google/genai is slightly different:
-const ai = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : null;
+// Initialize the Standard Client
+const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
 
 // Store sessions in memory
 const sessions = new Map();
@@ -50,7 +52,7 @@ You must count the number of questions you (the host) have ALREADY asked in the 
 
 **Turn 3 (2 previous questions) -> Stage 3: The Crisis**
 - **Your Pivot:** Acknowledge briefly, then HARD PIVOT to a problem. Confront the CEO about a specific failure or something that has gone wrong.
-- **Good Option:** Personally takes direct responsibility.
+- **Good Option:** Takes direct responsibility.
 - **Evasive Option:** Shirks responsibility (blames context, market, or others).
 
 **Turn 4+ -> Wrap up**
@@ -182,7 +184,7 @@ app.get("/api/health", (req, res) => {
 
 app.post("/api/init", async (req, res) => {
   try {
-    if (!ai) {
+    if (!genAI) {
       console.error("Missing API Key");
       return res.status(500).json({ error: "Server missing GEMINI_API_KEY" });
     }
@@ -194,29 +196,32 @@ app.post("/api/init", async (req, res) => {
 
     const sessionId = crypto.randomUUID();
 
-    // 1. Configure the model with the NEW SDK syntax
-    const chatSession = ai.chats.create({
+    // 1. Get the Model (Standard SDK Syntax)
+    const model = genAI.getGenerativeModel({
       model: "gemini-1.5-flash",
-      config: {
-        systemInstruction: createSystemInstruction(company),
+      systemInstruction: createSystemInstruction(company),
+      generationConfig: {
         responseMimeType: "application/json",
       },
     });
 
-    // 2. Start Chat and Store Session
-    sessions.set(sessionId, chatSession);
+    // 2. Start Chat
+    const chat = model.startChat({
+        history: [] 
+    });
+    
+    // Store the chat session
+    sessions.set(sessionId, chat);
+
     console.log("[init] session:", sessionId, "company:", company.name);
 
     // 3. Send First Message
-    const result = await chatSession.sendMessage({
-      message: "Start the show. Introduce the guest and ask the first opening question (Stage 1). Include two options (good/evasive)."
-    });
+    const result = await chat.sendMessage(
+      "Start the show. Introduce the guest and ask the first opening question (Stage 1). Include two options (good/evasive)."
+    );
     
-    // 4. Parse Response (New SDK uses .text property directly sometimes, but let's be safe)
-    const responseText = result.text || (result.response && result.response.text && result.response.text()) || ""; 
-    // ^ Note: The @google/genai SDK return object structure can vary slightly by version. 
-    // Usually result.text is a getter or property.
-    
+    // 4. Parse Response
+    const responseText = result.response.text();
     const parsed = safeParseJson(responseText);
     
     if (!parsed) {
@@ -229,6 +234,7 @@ app.post("/api/init", async (req, res) => {
 
   } catch (err) {
     console.error("[init] error:", err); 
+    // Return fallback so the UI doesn't crash
     res.status(500).json({
       sessionId: null,
       text: "Welcome to the show. In one sentence, what do you do and why should anyone trust you?",
@@ -248,7 +254,7 @@ app.post("/api/init", async (req, res) => {
 
 app.post("/api/chat", async (req, res) => {
   try {
-    if (!ai) return res.status(500).json({ error: "Server missing GEMINI_API_KEY" });
+    if (!genAI) return res.status(500).json({ error: "Server missing GEMINI_API_KEY" });
 
     const { sessionId, message, selectedKey } = req.body || {};
     const chatSession = sessions.get(sessionId);
@@ -263,8 +269,8 @@ app.post("/api/chat", async (req, res) => {
 
     console.log("[chat]", sessionId, "user:", sel);
 
-    const result = await chatSession.sendMessage({ message: wrapped });
-    const responseText = result.text || (result.response && result.response.text && result.response.text()) || "";
+    const result = await chatSession.sendMessage(wrapped);
+    const responseText = result.response.text();
 
     const parsed = safeParseJson(responseText);
 
@@ -320,8 +326,8 @@ app.post("/api/summary", async (req, res) => {
       }
     `;
 
-    const result = await chatSession.sendMessage({ message: prompt });
-    const responseText = result.text || (result.response && result.response.text && result.response.text()) || "";
+    const result = await chatSession.sendMessage(prompt);
+    const responseText = result.response.text();
     const parsed = safeParseJson(responseText);
 
     if (!parsed) throw new Error("Summary parsing failed");
