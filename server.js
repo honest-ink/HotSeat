@@ -99,6 +99,8 @@ Rules:
 - Set "isContradiction" true only if the guest contradicts earlier claims.
 - "sentiment" must match the tone of "text".
 - Set "isInterviewOver" to true ONLY if you have completed Stage 3.
+`; 
+}  
 
 function safeParseJson(text) {
   try {
