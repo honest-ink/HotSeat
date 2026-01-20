@@ -2,6 +2,7 @@
 const express = require("express");
 const path = require("path");
 const crypto = require("crypto");
+// NOTE: Ensure you have run: npm install @google/genai
 const { GoogleGenAI, Type } = require("@google/genai");
 
 const app = express();
@@ -18,9 +19,12 @@ const ai = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : null;
 // sessionId -> chatSession
 const sessions = new Map();
 
+/**
+ * Creates the dynamic System Instruction based on the Company Name/Mission.
+ * This includes the logic for the 3 Stages (Mission -> Performance -> Crisis).
+ */
 function createSystemInstruction(company) {
   return `
-
 You are Alex Sterling, a sharp, authoritative business journalist and host of the prime-time show "The Hot Seat".
 
 You are interviewing the CEO of "${company.name}" whose mission is "${company.mission}".
@@ -99,12 +103,15 @@ Rules:
 - Set "isContradiction" true only if the guest contradicts earlier claims.
 - "sentiment" must match the tone of "text".
 - Set "isInterviewOver" to true ONLY if you have completed Stage 3.
-`; 
-}  
+`;
+}
+
+// --- HELPER FUNCTIONS ---
 
 function safeParseJson(text) {
   try {
-    return JSON.parse(text);
+    const clean = text.replace(/```json/g, "").replace(/```/g, "").trim();
+    return JSON.parse(clean);
   } catch {
     return null;
   }
@@ -184,6 +191,8 @@ function selectionToCategory(selectionKey) {
   return selectionKey === "evasive" ? "evasive" : "good";
 }
 
+// --- ENDPOINTS ---
+
 app.get("/api/health", (req, res) => {
   res.json({ ok: true, hasKey: Boolean(GEMINI_API_KEY) });
 });
@@ -199,8 +208,9 @@ app.post("/api/init", async (req, res) => {
 
     const sessionId = crypto.randomUUID();
 
+    // Create the session with the Dynamic Prompt
     const chatSession = ai.chats.create({
-      model: "gemini-2.5-flash",
+      model: "gemini-1.5-flash", // Reverted to 1.5-flash for stability/speed (or use 2.0-flash-exp)
       config: {
         systemInstruction: createSystemInstruction(company),
         responseMimeType: "application/json",
@@ -233,13 +243,13 @@ app.post("/api/init", async (req, res) => {
 
     const first = await chatSession.sendMessage({
       message:
-        "Start the show. Introduce the guest and ask the first opening question. Include two options (good/evasive). One sentence each, max 18 words.",
+        "Start the show. Introduce the guest and ask the first opening question (Stage 1). Include two options (good/evasive). One sentence each, max 18 words.",
     });
 
-    const parsed = safeParseJson(first.text || "");
+    const parsed = safeParseJson(first.text() || "");
     if (!parsed) {
-      console.error("[init] bad json:", first.text);
-      return res.status(502).json({ error: "Gemini returned non-JSON", raw: first.text });
+      console.error("[init] bad json:", first.text());
+      return res.status(502).json({ error: "Gemini returned non-JSON", raw: first.text() });
     }
 
     // First turn category isn't meaningful; set to "good" for stability
@@ -289,10 +299,10 @@ app.post("/api/chat", async (req, res) => {
 
     const r = await chatSession.sendMessage({ message: wrapped });
 
-    const parsed = safeParseJson(r.text || "");
+    const parsed = safeParseJson(r.text() || "");
     if (!parsed) {
-      console.error("[chat] bad json:", r.text);
-      return res.status(502).json({ error: "Gemini returned non-JSON", raw: r.text });
+      console.error("[chat] bad json:", r.text());
+      return res.status(502).json({ error: "Gemini returned non-JSON", raw: r.text() });
     }
 
     const normalized = normalizeHostPayload(parsed);
@@ -364,8 +374,7 @@ app.post("/api/summary", async (req, res) => {
     const result = await chatSession.sendMessage(prompt);
     
     // Safety parsing
-    let text = result.response.text();
-    // Strip markdown if Gemini adds it
+    let text = result.text();
     text = text.replace(/```json/g, "").replace(/```/g, "").trim(); 
     
     const parsed = safeParseJson(text);
