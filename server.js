@@ -52,7 +52,7 @@ You must count the number of questions you (the host) have ALREADY asked in the 
 
 **Turn 3 (2 previous questions) -> Stage 3: The Crisis**
 - **Your Pivot:** Acknowledge briefly, then HARD PIVOT to a problem. Confront the CEO about a specific failure or something that has gone wrong.
-- **Good Option:** Takes direct responsibility.
+- **Good Option:** Personally takes direct responsibility.
 - **Evasive Option:** Shirks responsibility (blames context, market, or others).
 
 **Turn 4+ -> Wrap up**
