@@ -3,8 +3,10 @@ const express = require("express");
 const path = require("path");
 const crypto = require("crypto");
 
-// CRITICAL: We use the STABLE SDK now. 
-// Ensure you ran: npm install @google/generative-ai
+// -------------------------------------------------------------------------
+// CRITICAL: This requires the STABLE SDK.
+// Ensure you have run: npm install @google/generative-ai
+// -------------------------------------------------------------------------
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const app = express();
@@ -206,6 +208,7 @@ app.post("/api/init", async (req, res) => {
     });
 
     // 2. Start Chat
+    // Note: The standard SDK uses 'startChat' with a 'history' array.
     const chat = model.startChat({
         history: [] 
     });
