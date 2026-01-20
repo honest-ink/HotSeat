@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { TrendingUp, TrendingDown, AlertCircle, Mic } from "lucide-react";
 import {
   Message,
@@ -39,6 +39,30 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
   onSelectAnswer,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // --- NEW: Stock Ticker Flash Logic ---
+  const [flashClass, setFlashClass] = useState("");
+  const prevPriceRef = useRef(state.stockPrice);
+
+  useEffect(() => {
+    // Determine direction
+    if (state.stockPrice > prevPriceRef.current) {
+      setFlashClass("animate-stock-up");
+    } else if (state.stockPrice < prevPriceRef.current) {
+      setFlashClass("animate-stock-down");
+    }
+
+    // Update ref for next comparison
+    prevPriceRef.current = state.stockPrice;
+
+    // Reset animation class after it plays (600ms match CSS)
+    const timer = setTimeout(() => {
+      setFlashClass("");
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [state.stockPrice]);
+  // -------------------------------------
 
   // Auto-scroll to bottom of chat
   useEffect(() => {
@@ -138,7 +162,7 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
               {tickerSymbol}
             </div>
             <div
-              className={`font-mono font-bold text-lg flex items-center gap-2 ${
+              className={`font-mono font-bold text-lg flex items-center gap-2 ${flashClass} ${
                 isFailZone ? "text-red-400" : "text-white"
               }`}
             >
@@ -170,7 +194,6 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
             z-40
             md:bg-gradient-to-r md:from-black/80 md:via-black/40 md:to-transparent
             bg-gradient-to-t from-black via-black/90 to-transparent
-            <div className="... md:pb-24 ...">
           `}
         >
           {/* Messages Container */}
