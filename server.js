@@ -2,26 +2,24 @@
 const express = require("express");
 const path = require("path");
 const crypto = require("crypto");
-// NOTE: Ensure you have run: npm install @google/genai
-const { GoogleGenAI, Type } = require("@google/genai");
+// USES THE NEWER SDK YOU HAVE INSTALLED:
+const { GoogleGenAI } = require("@google/genai");
 
 const app = express();
 const port = process.env.PORT || 8080;
 
 app.use(express.json({ limit: "1mb" }));
 
-// ---- Gemini setup (SERVER ONLY) ----
+// ---- Gemini setup ----
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-if (!GEMINI_API_KEY) console.error("Missing env var GEMINI_API_KEY");
+// The constructor for @google/genai is slightly different:
 const ai = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : null;
 
-// Simple in-memory chat store (will reset if instance restarts)
-// sessionId -> chatSession
+// Store sessions in memory
 const sessions = new Map();
 
 /**
  * Creates the dynamic System Instruction based on the Company Name/Mission.
- * This includes the logic for the 3 Stages (Mission -> Performance -> Crisis).
  */
 function createSystemInstruction(company) {
   return `
@@ -112,16 +110,13 @@ function safeParseJson(text) {
   try {
     const clean = text.replace(/```json/g, "").replace(/```/g, "").trim();
     return JSON.parse(clean);
-  } catch {
+  } catch (e) {
     return null;
   }
 }
 
 function countWords(s) {
-  return String(s || "")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean).length;
+  return String(s || "").trim().split(/\s+/).filter(Boolean).length;
 }
 
 function trimToMaxWords(s, maxWords) {
@@ -130,7 +125,6 @@ function trimToMaxWords(s, maxWords) {
   return words.slice(0, maxWords).join(" ");
 }
 
-// keep only the first sentence
 function firstSentence(s) {
   const str = String(s || "").trim();
   if (!str) return "";
@@ -142,26 +136,19 @@ function normalizeOptionText(raw, fallback) {
   let s = raw ? String(raw) : "";
   s = firstSentence(s);
   s = trimToMaxWords(s, 18);
-
-  // if model returns nothing useful, fallback
   if (countWords(s) < 3) s = fallback;
-
-  // final hard cap
   s = firstSentence(s);
   s = trimToMaxWords(s, 18);
   return s;
 }
 
 function normalizeOptions(options) {
-  const goodFallback =
-    "We track retention and margin weekly, publish results monthly, and act on the data.";
-  const evasiveFallback =
-    "We’re seeing strong momentum, and we’ll share more details when we’re ready.";
-
-  const good = normalizeOptionText(options?.good, goodFallback);
-  const evasive = normalizeOptionText(options?.evasive, evasiveFallback);
-
-  return { good, evasive };
+  const goodFallback = "We track retention weekly and act on the data.";
+  const evasiveFallback = "We’re seeing strong momentum and will share details soon.";
+  return {
+    good: normalizeOptionText(options?.good, goodFallback),
+    evasive: normalizeOptionText(options?.evasive, evasiveFallback),
+  };
 }
 
 function randomOptionsOrder() {
@@ -169,12 +156,8 @@ function randomOptionsOrder() {
 }
 
 function normalizeHostPayload(parsed) {
-  const text =
-    parsed?.text ??
-    "Welcome. What is the single biggest risk to your business this year?";
-
+  const text = parsed?.text ?? "Welcome. What is the single biggest risk to your business?";
   const category = parsed?.category ?? "good";
-
   return {
     text,
     category,
@@ -199,7 +182,10 @@ app.get("/api/health", (req, res) => {
 
 app.post("/api/init", async (req, res) => {
   try {
-    if (!ai) return res.status(500).json({ error: "Server missing GEMINI_API_KEY" });
+    if (!ai) {
+      console.error("Missing API Key");
+      return res.status(500).json({ error: "Server missing GEMINI_API_KEY" });
+    }
 
     const company = req.body?.company;
     if (!company?.name || !company?.mission) {
@@ -208,56 +194,41 @@ app.post("/api/init", async (req, res) => {
 
     const sessionId = crypto.randomUUID();
 
-    // Create the session with the Dynamic Prompt
+    // 1. Configure the model with the NEW SDK syntax
     const chatSession = ai.chats.create({
-      model: "gemini-1.5-flash", // Reverted to 1.5-flash for stability/speed (or use 2.0-flash-exp)
+      model: "gemini-1.5-flash",
       config: {
         systemInstruction: createSystemInstruction(company),
         responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            text: { type: Type.STRING },
-            category: { type: Type.STRING, enum: ["good", "evasive"] },
-            isContradiction: { type: Type.BOOLEAN },
-            sentiment: { type: Type.STRING, enum: ["positive", "negative", "neutral"] },
-            reason: { type: Type.STRING },
-            options: {
-              type: Type.OBJECT,
-              properties: {
-                good: { type: Type.STRING },
-                evasive: { type: Type.STRING },
-              },
-              required: ["good", "evasive"],
-            },
-            isInterviewOver: { type: Type.BOOLEAN },
-          },
-          required: ["text", "category", "isContradiction", "options", "isInterviewOver"],
-        },
       },
     });
 
+    // 2. Start Chat and Store Session
     sessions.set(sessionId, chatSession);
-
     console.log("[init] session:", sessionId, "company:", company.name);
 
-    const first = await chatSession.sendMessage({
-      message:
-        "Start the show. Introduce the guest and ask the first opening question (Stage 1). Include two options (good/evasive). One sentence each, max 18 words.",
+    // 3. Send First Message
+    const result = await chatSession.sendMessage({
+      message: "Start the show. Introduce the guest and ask the first opening question (Stage 1). Include two options (good/evasive)."
     });
-
-    const parsed = safeParseJson(first.text() || "");
+    
+    // 4. Parse Response (New SDK uses .text property directly sometimes, but let's be safe)
+    const responseText = result.text || (result.response && result.response.text && result.response.text()) || ""; 
+    // ^ Note: The @google/genai SDK return object structure can vary slightly by version. 
+    // Usually result.text is a getter or property.
+    
+    const parsed = safeParseJson(responseText);
+    
     if (!parsed) {
-      console.error("[init] bad json:", first.text());
-      return res.status(502).json({ error: "Gemini returned non-JSON", raw: first.text() });
+      console.error("[init] bad json:", responseText);
+      throw new Error("Invalid JSON from Gemini");
     }
 
-    // First turn category isn't meaningful; set to "good" for stability
     const normalized = normalizeHostPayload({ ...parsed, category: "good" });
-
     res.json({ sessionId, ...normalized });
+
   } catch (err) {
-    console.error("[init] error:", err);
+    console.error("[init] error:", err); 
     res.status(500).json({
       sessionId: null,
       text: "Welcome to the show. In one sentence, what do you do and why should anyone trust you?",
@@ -280,37 +251,31 @@ app.post("/api/chat", async (req, res) => {
     if (!ai) return res.status(500).json({ error: "Server missing GEMINI_API_KEY" });
 
     const { sessionId, message, selectedKey } = req.body || {};
-    if (!sessionId) return res.status(400).json({ error: "Missing sessionId" });
-
     const chatSession = sessions.get(sessionId);
-    if (!chatSession) {
-      return res.status(404).json({ error: "Unknown sessionId (server restarted?)" });
+
+    if (!sessionId || !chatSession) {
+      return res.status(404).json({ error: "Session not found" });
     }
 
+    const sel = selectedKey === "evasive" ? "evasive" : "good";
     const msg = typeof message === "string" ? message : "";
-    if (!msg) return res.status(400).json({ error: "Missing message" });
-
-    const sel = selectedKey === "good" || selectedKey === "evasive" ? selectedKey : "good";
-
-    // Tell the model what the CEO selected, so it mirrors category.
     const wrapped = `CEO selected "${sel}". The selected answer text was:\n${msg}`;
 
-    console.log("[chat]", sessionId, "user:", sel, msg);
+    console.log("[chat]", sessionId, "user:", sel);
 
-    const r = await chatSession.sendMessage({ message: wrapped });
+    const result = await chatSession.sendMessage({ message: wrapped });
+    const responseText = result.text || (result.response && result.response.text && result.response.text()) || "";
 
-    const parsed = safeParseJson(r.text() || "");
+    const parsed = safeParseJson(responseText);
+
     if (!parsed) {
-      console.error("[chat] bad json:", r.text());
-      return res.status(502).json({ error: "Gemini returned non-JSON", raw: r.text() });
+      console.error("[chat] bad json:", responseText);
+      throw new Error("Invalid JSON from Gemini");
     }
 
     const normalized = normalizeHostPayload(parsed);
-
-    // Hard mirror category on server for safety
     normalized.category = selectionToCategory(sel);
 
-    console.log("[chat]", sessionId, "host:", normalized.text);
     res.json(normalized);
   } catch (err) {
     console.error("[chat] error:", err);
@@ -333,66 +298,38 @@ app.post("/api/chat", async (req, res) => {
 // ---- Producer Note Summary Endpoint ----
 app.post("/api/summary", async (req, res) => {
   try {
-    const { sessionId, wrongAnswerText, trapType } = req.body;
-
-    // If the user played perfectly (no wrong answers), return a generic "Perfect Game" note
+    const { sessionId, wrongAnswerText } = req.body;
+    
+    // Perfect game check
     if (!wrongAnswerText) {
-      return res.json({
-        producerNote: "Flawless execution. You stayed on message, satisfied the investors, and controlled the narrative perfectly. Now, let’s turn this momentum into a long-term content strategy."
-      });
+      return res.json({ producerNote: "Flawless execution. You stayed on message and controlled the narrative perfectly." });
     }
 
     const chatSession = sessions.get(sessionId);
-    // If session is lost (server restart), fallback to generic note
     if (!chatSession) {
-      return res.json({
-        producerNote: "The market responded to your vision. Now, let’s transform that narrative into a content strategy that lands with your ideal clients."
-      });
+      return res.json({ producerNote: "Great effort, but try to avoid vague answers next time." });
     }
 
     const prompt = `
       The interview is over. I need a "Producer's Note" based on the user's mistake.
-      
       The user selected this EVASIVE answer: "${wrongAnswerText}"
       
-      First, identify which "Trap" this answer falls into:
-      1. Emotional Trap (focuses on feelings/values over data)
-      2. Process Trap (focuses on hard work/internal methods over results)
-      3. Status Trap (focuses on market position/reputation over specifics)
-      
-      Then, output JSON ONLY. Format:
+      Identify the trap (Emotional, Process, or Status) and output JSON:
       {
-        "producerNote": "Great work! One thing for future interviews: The market reacted negatively to '${wrongAnswerText}'. That's usually because you [INSERT REASON]. Next time try and always link your answers to something tangible you're doing for a specific consumer."
+        "producerNote": "Great work! One thing for future interviews: The market reacted negatively to '${wrongAnswerText}'. That's usually because you [INSERT REASON]. Next time try and always link your answers to something tangible."
       }
-
-      Choose the [INSERT REASON] based on the identified trap:
-      - If Emotional: "prioritized 'vibes' and mission statements over the verifiable data points investors crave"
-      - If Process: "confused internal activity with external value, focusing on 'how hard you work' rather than 'what you delivered'"
-      - If Status: "leaned on your legacy and market size instead of proving you are still innovating today"
     `;
 
-    const result = await chatSession.sendMessage(prompt);
-    
-    // Safety parsing
-    let text = result.text();
-    text = text.replace(/```json/g, "").replace(/```/g, "").trim(); 
-    
-    const parsed = safeParseJson(text);
-    // If parsing fails, fall back to generic
-    if (!parsed) {
-        return res.json({
-             producerNote: "Great effort. You had strong moments, but watch out for evasive answers—investors punish vague responses. Let's tighten your data story for next time."
-        });
-    }
+    const result = await chatSession.sendMessage({ message: prompt });
+    const responseText = result.text || (result.response && result.response.text && result.response.text()) || "";
+    const parsed = safeParseJson(responseText);
 
+    if (!parsed) throw new Error("Summary parsing failed");
     res.json(parsed);
 
   } catch (err) {
     console.error("[summary] error:", err);
-    // Fallback if AI fails
-    res.json({
-      producerNote: "Great effort. You had strong moments, but watch out for evasive answers—investors punish vague responses. Let's tighten your data story for next time."
-    });
+    res.json({ producerNote: "Great effort. You had strong moments, but watch out for evasive answers." });
   }
 });
 
