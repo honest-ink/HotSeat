@@ -305,7 +305,7 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
           </div>
 
           {/* Answer Buttons (2 options, neutral styling, shuffled order) */}
-          <div className="p-4 md:p-8 pt-0 md:pt-4 pb-[calc(env(safe-area-inset-bottom)+16px)] md:pb-72 pointer-events-auto relative z-[60]">
+          <div className="p-4 md:p-8 pt-0 md:pt-4 pb-[calc(env(safe-area-inset-bottom)+16px)] md:pb-40 pointer-events-auto relative z-[60]">
             <div className="relative group">
               <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl opacity-50 blur group-hover:opacity-75 transition duration-200"></div>
 
