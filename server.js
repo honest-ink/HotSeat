@@ -2,11 +2,6 @@
 const express = require("express");
 const path = require("path");
 const crypto = require("crypto");
-
-// -------------------------------------------------------------------------
-// CRITICAL: This requires the STABLE SDK.
-// Ensure you have run: npm install @google/generative-ai
-// -------------------------------------------------------------------------
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const app = express();
@@ -16,7 +11,6 @@ app.use(express.json({ limit: "1mb" }));
 
 // ---- Gemini setup ----
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-// Initialize the Standard Client
 const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
 
 // Store sessions in memory
@@ -198,9 +192,9 @@ app.post("/api/init", async (req, res) => {
 
     const sessionId = crypto.randomUUID();
 
-    // 1. Get the Model (Standard SDK Syntax)
+    // 1. Get the Model (UPDATED MODEL NAME)
     const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-flash",
+      model: "gemini-2.5-flash", // <--- UPDATED HERE
       systemInstruction: createSystemInstruction(company),
       generationConfig: {
         responseMimeType: "application/json",
@@ -208,12 +202,10 @@ app.post("/api/init", async (req, res) => {
     });
 
     // 2. Start Chat
-    // Note: The standard SDK uses 'startChat' with a 'history' array.
     const chat = model.startChat({
         history: [] 
     });
     
-    // Store the chat session
     sessions.set(sessionId, chat);
 
     console.log("[init] session:", sessionId, "company:", company.name);
@@ -237,7 +229,6 @@ app.post("/api/init", async (req, res) => {
 
   } catch (err) {
     console.error("[init] error:", err); 
-    // Return fallback so the UI doesn't crash
     res.status(500).json({
       sessionId: null,
       text: "Welcome to the show. In one sentence, what do you do and why should anyone trust you?",
@@ -304,12 +295,10 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
-// ---- Producer Note Summary Endpoint ----
 app.post("/api/summary", async (req, res) => {
   try {
     const { sessionId, wrongAnswerText } = req.body;
     
-    // Perfect game check
     if (!wrongAnswerText) {
       return res.json({ producerNote: "Flawless execution. You stayed on message and controlled the narrative perfectly." });
     }
@@ -342,10 +331,8 @@ app.post("/api/summary", async (req, res) => {
   }
 });
 
-// ---- Static hosting ----
 app.use(express.static(path.join(__dirname, "dist")));
 
-// SPA fallback
 app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
