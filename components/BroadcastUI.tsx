@@ -21,11 +21,27 @@ interface BroadcastUIProps {
   // options for the current question (now 2: good/evasive)
   answerOptions?: AnswerOptions;
 
+  // optional: App-provided order (takes priority over internal shuffle)
+  optionsOrder?: AnswerOptionKey[];
+
   // lock UI while request in flight / not awaiting answer
   isAnswerLocked: boolean;
 
   // tell App which option was picked
   onSelectAnswer: (key: AnswerOptionKey) => void;
+
+  // --- Intro tutorial helpers (all optional) ---
+  // highlight one answer briefly ("good" or "evasive")
+  highlightAnswerKey?: AnswerOptionKey | null;
+
+  // force the ticker icon direction
+  tickerDirectionOverride?: "up" | "down" | null;
+
+  // reduce flash duration for tutorial (default 600ms)
+  flashDurationMs?: number;
+
+  // show an arrow pointing at the stock ticker
+  showTickerPointer?: boolean;
 }
 
 const BroadcastUI: React.FC<BroadcastUIProps> = ({
@@ -35,33 +51,31 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
   isLoading,
   companyName,
   answerOptions,
+  optionsOrder,
   isAnswerLocked,
   onSelectAnswer,
+  highlightAnswerKey = null,
+  tickerDirectionOverride = null,
+  flashDurationMs = 600,
+  showTickerPointer = false,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // --- NEW: Stock Ticker Flash Logic ---
+  // --- Stock Ticker Flash Logic ---
   const [flashClass, setFlashClass] = useState("");
   const prevPriceRef = useRef(state.stockPrice);
 
   useEffect(() => {
-    // Determine direction
     if (state.stockPrice > prevPriceRef.current) {
       setFlashClass("animate-stock-up");
     } else if (state.stockPrice < prevPriceRef.current) {
       setFlashClass("animate-stock-down");
     }
-
-    // Update ref for next comparison
     prevPriceRef.current = state.stockPrice;
 
-    // Reset animation class after it plays (600ms match CSS)
-    const timer = setTimeout(() => {
-      setFlashClass("");
-    }, 600);
-
+    const timer = setTimeout(() => setFlashClass(""), flashDurationMs);
     return () => clearTimeout(timer);
-  }, [state.stockPrice]);
+  }, [state.stockPrice, flashDurationMs]);
   // -------------------------------------
 
   // Auto-scroll to bottom of chat
@@ -77,14 +91,16 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
     !isAnswerLocked &&
     Boolean(answerOptions);
 
-  // Randomise display order per question so "good" isn't always first.
-  // Uses questionCount as the "turn seed" (stable within a turn).
+  // Order of buttons:
+  // 1) If App provides optionsOrder, use it (tutorial needs deterministic order)
+  // 2) else, shuffle deterministically by questionCount so "good" isn’t always first
   const buttonOrder = useMemo<AnswerOptionKey[]>(() => {
+    if (optionsOrder && optionsOrder.length === 2) return optionsOrder;
+
     const base: AnswerOptionKey[] = ["good", "evasive"];
-    // simple deterministic shuffle: odd turns swap order
     if ((state.questionCount || 0) % 2 === 1) return base;
     return base.reverse();
-  }, [state.questionCount]);
+  }, [optionsOrder, state.questionCount]);
 
   const sendAnswerToN8n = async (userAnswer: string) => {
     const webhookUrl = "https://honest-ink.app.n8n.cloud/webhook/Hot Seat";
@@ -104,15 +120,12 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
 
   const handlePick = (key: AnswerOptionKey) => {
     if (!answerOptions) return;
+    if (!canChoose) return;
 
     const text = answerOptions[key];
 
-    // optional: keep this for logging/legacy
     onSendMessage?.(text);
-
     sendAnswerToN8n(text);
-
-    // drives gameplay
     onSelectAnswer(key);
   };
 
@@ -131,8 +144,84 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
   const isFailZone = state.stockPrice < FAIL_STOCK_PRICE;
   const isNearFail = state.stockPrice < FAIL_STOCK_PRICE + 1.5;
 
+  // Ticker icon direction:
+  // - tutorial can override
+  // - else use fail zone rule
+  const effectiveDirection: "up" | "down" =
+    tickerDirectionOverride ??
+    (isFailZone ? "down" : "up");
+
+  // --- Pointer overlay anchored to ticker ---
+  const tickerBoxRef = useRef<HTMLDivElement | null>(null);
+  const [pointerPos, setPointerPos] = useState<{
+    top: number;
+    left: number;
+    opacity: number;
+  }>({ top: 0, left: 0, opacity: 0 });
+
+  useEffect(() => {
+    if (!showTickerPointer) {
+      setPointerPos((p) => ({ ...p, opacity: 0 }));
+      return;
+    }
+
+    const update = () => {
+      const el = tickerBoxRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+
+      // Position the arrow slightly left of the ticker, vertically centered.
+      const top = r.top + r.height / 2;
+      const left = Math.max(12, r.left - 64);
+
+      setPointerPos({ top, left, opacity: 1 });
+    };
+
+    update();
+
+    const onResize = () => update();
+    const onScroll = () => update();
+
+    window.addEventListener("resize", onResize);
+    window.addEventListener("scroll", onScroll, true);
+
+    const interval = window.setInterval(update, 100);
+
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("scroll", onScroll, true);
+      window.clearInterval(interval);
+    };
+  }, [showTickerPointer]);
+  // ----------------------------------------
+
   return (
     <div className="absolute inset-0 z-10 flex flex-col pointer-events-none h-full max-h-[100dvh]">
+      {/* Ticker pointer overlay */}
+      <div
+        className="fixed z-[80] pointer-events-none transition-opacity duration-200"
+        style={{
+          top: pointerPos.top,
+          left: pointerPos.left,
+          opacity: pointerPos.opacity,
+          transform: "translateY(-50%)",
+        }}
+      >
+        <div className="flex items-center gap-2">
+          <div className="w-10 h-[2px] bg-white/80" />
+          <div
+            style={{
+              width: 0,
+              height: 0,
+              borderTop: "8px solid transparent",
+              borderBottom: "8px solid transparent",
+              borderLeft: "12px solid rgba(255,255,255,0.85)",
+              filter: "drop-shadow(0 2px 8px rgba(0,0,0,0.6))",
+            }}
+          />
+        </div>
+      </div>
+
       {/* --- TOP HEADER (Global) --- */}
       <div className="absolute top-0 left-0 right-0 p-4 md:p-6 flex justify-between items-start z-50">
         {/* Live Bug */}
@@ -157,17 +246,21 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
           </div>
 
           {/* Stock */}
-          <div className="flex items-center gap-3 bg-black/60 backdrop-blur-md text-white px-4 py-2 rounded-lg border border-white/10 shadow-2xl">
+          <div
+            ref={tickerBoxRef}
+            className="flex items-center gap-3 bg-black/60 backdrop-blur-md text-white px-4 py-2 rounded-lg border border-white/10 shadow-2xl"
+          >
             <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider border-r border-gray-600 pr-3 mr-1">
               {tickerSymbol}
             </div>
+
             <div
               className={`font-mono font-bold text-lg flex items-center gap-2 ${flashClass} ${
                 isFailZone ? "text-red-400" : "text-white"
               }`}
             >
               {state.stockPrice.toFixed(2)}
-              {isFailZone ? (
+              {effectiveDirection === "down" ? (
                 <TrendingDown size={18} />
               ) : (
                 <TrendingUp size={18} />
@@ -224,6 +317,11 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
                 msg.sender === "journalist" &&
                 typeof msg.stockImpact === "number" &&
                 msg.stockImpact !== 0;
+
+              // Don’t render totally empty bubbles (used to happen in earlier ticker tests)
+              const isTrulyEmpty = !msg.text || msg.text.trim().length === 0;
+
+              if (isTrulyEmpty) return null;
 
               return (
                 <div
@@ -304,7 +402,7 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
             )}
           </div>
 
-          {/* Answer Buttons (2 options, neutral styling, shuffled order) */}
+          {/* Answer Buttons (2 options) */}
           <div className="p-4 md:p-8 pt-0 md:pt-4 pb-[calc(env(safe-area-inset-bottom)+16px)] md:pb-40 pointer-events-auto relative z-[60]">
             <div className="relative group">
               <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl opacity-50 blur group-hover:opacity-75 transition duration-200"></div>
@@ -319,23 +417,31 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
                 </div>
 
                 <div className="grid grid-cols-1 gap-2 md:gap-3">
-                  {buttonOrder.map((key) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => handlePick(key)}
-                      disabled={!canChoose}
-                      className={`w-full text-left px-4 py-3 rounded-lg border transition-colors ${
-                        canChoose
-                          ? "bg-white/5 border-white/15 hover:bg-white/10 text-white"
-                          : "bg-white/5 border-white/10 text-zinc-500"
-                      }`}
-                    >
-                      <div className="text-sm md:text-base leading-snug font-medium">
-                        {answerOptions ? answerOptions[key] : "…"}
-                      </div>
-                    </button>
-                  ))}
+                  {buttonOrder.map((key) => {
+                    const isHighlighted = highlightAnswerKey === key;
+
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => handlePick(key)}
+                        disabled={!canChoose}
+                        className={`w-full text-left px-4 py-3 rounded-lg border transition-colors ${
+                          canChoose
+                            ? "bg-white/5 border-white/15 hover:bg-white/10 text-white"
+                            : "bg-white/5 border-white/10 text-zinc-500"
+                        } ${
+                          isHighlighted
+                            ? "ring-2 ring-white/50 bg-white/10"
+                            : ""
+                        }`}
+                      >
+                        <div className="text-sm md:text-base leading-snug font-medium">
+                          {answerOptions ? answerOptions[key] : "…"}
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
 
                 {!answerOptions && state.awaitingAnswer && !isLoading && (
