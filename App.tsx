@@ -72,6 +72,11 @@ function App() {
   const [isIntroTutorialActive, setIsIntroTutorialActive] = useState(false);
   const introTutorialRanRef = useRef(false);
 
+  // NEW: tutorial UI signals for BroadcastUI
+  const [highlightAnswerKey, setHighlightAnswerKey] = useState<AnswerOptionKey | null>(null);
+  const [tickerDirectionOverride, setTickerDirectionOverride] = useState<"up" | "down" | null>(null);
+  const [showTickerPointer, setShowTickerPointer] = useState(false);
+
   // ---- AUDIO ----
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -206,8 +211,7 @@ function App() {
     from: number,
     to: number,
     steps: number,
-    totalMs: number,
-    tick: "up" | "down"
+    totalMs: number
   ) => {
     const stepMs = Math.max(1, Math.floor(totalMs / steps));
     for (let i = 1; i <= steps; i++) {
@@ -216,9 +220,13 @@ function App() {
 
       // Update ONLY the displayed stockPrice (don’t touch lowestPrice / sentiment)
       setInterviewState((prev) => ({ ...prev, stockPrice: nextFixed }));
-      postJournalistLine("", { tick }); // tiny nudge for UI if you use tick indicators
       await sleep(stepMs);
     }
+  };
+
+  const pulseHighlight = (key: AnswerOptionKey, ms = 350) => {
+    setHighlightAnswerKey(key);
+    window.setTimeout(() => setHighlightAnswerKey(null), ms);
   };
 
   const runIntroTutorialThenStart = async () => {
@@ -233,6 +241,9 @@ function App() {
     }
 
     setIsIntroTutorialActive(true);
+
+    // show pointer to ticker for full intro
+    setShowTickerPointer(true);
 
     // Show the tutorial answers, locked
     setAnswerOptions({
@@ -264,18 +275,26 @@ function App() {
     // Tutorial copy (shown in the same bubble system for now)
     postJournalistLine("You’re about to go live. Remember — markets punish vague answers.");
 
+    // punish vagueness
+    setTickerDirectionOverride("down");
+    pulseHighlight("evasive", 350);
+
     // sell-off
     const downTo = Number((baselinePrice - 0.5).toFixed(2));
-    await tickPrice(baselinePrice, downTo, 3, 800, "down");
+    await tickPrice(baselinePrice, downTo, 3, 800);
 
     // tiny pause before rebound
     await sleep(250);
 
     postJournalistLine("Be clear and engaging, and we might be in for that Christmas bonus.");
 
+    // reward clarity
+    setTickerDirectionOverride("up");
+    pulseHighlight("good", 350);
+
     // rally
     const upTo = Number((baselinePrice + 5.0).toFixed(2));
-    await tickPrice(downTo, upTo, 5, 1100, "up");
+    await tickPrice(downTo, upTo, 5, 1100);
 
     postJournalistLine("Good luck.");
     await sleep(800);
@@ -287,6 +306,11 @@ function App() {
       lowestPrice: baselinePrice,
       audienceSentiment: 50,
     }));
+
+    // cleanup tutorial UI signals
+    setShowTickerPointer(false);
+    setTickerDirectionOverride(null);
+    setHighlightAnswerKey(null);
 
     setIsIntroTutorialActive(false);
     window.localStorage.setItem("hotseat_intro_tutorial_played", "1");
@@ -317,6 +341,12 @@ function App() {
       questionCount: 0,
       maxQuestions: TOTAL_QUESTIONS,
     });
+
+    // reset tutorial UI state in case of replay
+    setShowTickerPointer(false);
+    setTickerDirectionOverride(null);
+    setHighlightAnswerKey(null);
+    introTutorialRanRef.current = false;
 
     setPhase(GamePhase.INTRO);
     await startAudio();
@@ -671,6 +701,11 @@ function App() {
           }
           onSelectAnswer={handleSelectAnswer}
           onSendMessage={() => {}}
+          // NEW: tutorial signals
+          highlightAnswerKey={highlightAnswerKey}
+          tickerDirectionOverride={tickerDirectionOverride}
+          showTickerPointer={showTickerPointer}
+          flashDurationMs={isIntroTutorialActive ? 350 : 600}
         />
       </div>
     </div>
