@@ -236,6 +236,7 @@ function App() {
 
     const played = window.localStorage.getItem("hotseat_intro_tutorial_played") === "1";
     if (played) {
+      setMessages([]);
       await startFirstGeminiQuestion();
       return;
     }
