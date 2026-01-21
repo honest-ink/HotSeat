@@ -40,6 +40,10 @@ function sleep(ms: number) {
   return new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 }
 
+// ---- Tutorial timing control ----
+const TUTORIAL_TIME_MULTIPLIER = 2;
+const tut = (ms: number) => Math.round(ms * TUTORIAL_TIME_MULTIPLIER);
+
 function App() {
   const [phase, setPhase] = useState<GamePhase>(GamePhase.SETUP);
   const [company, setCompany] = useState<CompanyProfile>({ name: "", mission: "" });
@@ -283,9 +287,9 @@ function App() {
     pulseTicker();
 
     const downTo = Number((baselinePrice - 0.5).toFixed(2));
-    await tickPrice(baselinePrice, downTo, 3, 800);
+    await tickPrice(baselinePrice, downTo, 3, tut(800));
 
-    await sleep(250 * TUTORIAL_TIME_MULTIPLIER);
+    await sleep(tut(250));
 
     setTutorialText("Be clear and engaging, and we might be in for that Christmas bonus.");
     setTickerDirectionOverride("up");
@@ -293,10 +297,10 @@ function App() {
     pulseTicker();
 
     const upTo = Number((baselinePrice + 5.0).toFixed(2));
-    await tickPrice(downTo, upTo, 5, 1100);
+    await tickPrice(downTo, upTo, 5, tut(1100));
 
     setTutorialText("Good luck.");
-    await sleep(800 * TUTORIAL_TIME_MULTIPLIE);
+    await sleep(tut(800));
 
     // Restore baseline before real interview begins
     setInterviewState((prev) => ({
