@@ -41,7 +41,7 @@ function sleep(ms: number) {
 }
 
 // ---- Tutorial timing control ----
-const TUTORIAL_TIME_MULTIPLIER = 2;
+const TUTORIAL_TIME_MULTIPLIER = 4;
 const tut = (ms: number) => Math.round(ms * TUTORIAL_TIME_MULTIPLIER);
 
 function App() {
