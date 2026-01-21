@@ -72,10 +72,14 @@ function App() {
   const [isIntroTutorialActive, setIsIntroTutorialActive] = useState(false);
   const introTutorialRanRef = useRef(false);
 
-  // NEW: tutorial UI signals for BroadcastUI
+  // Tutorial overlay UI
+  const [tutorialText, setTutorialText] = useState<string>("");
   const [highlightAnswerKey, setHighlightAnswerKey] = useState<AnswerOptionKey | null>(null);
   const [tickerDirectionOverride, setTickerDirectionOverride] = useState<"up" | "down" | null>(null);
   const [showTickerPointer, setShowTickerPointer] = useState(false);
+
+  // increments to re-trigger ticker pulse animation on demand
+  const [tickerPulseSeq, setTickerPulseSeq] = useState(0);
 
   // ---- AUDIO ----
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -217,8 +221,6 @@ function App() {
     for (let i = 1; i <= steps; i++) {
       const next = from + ((to - from) * i) / steps;
       const nextFixed = Number(next.toFixed(2));
-
-      // Update ONLY the displayed stockPrice (don’t touch lowestPrice / sentiment)
       setInterviewState((prev) => ({ ...prev, stockPrice: nextFixed }));
       await sleep(stepMs);
     }
@@ -229,24 +231,26 @@ function App() {
     window.setTimeout(() => setHighlightAnswerKey(null), ms);
   };
 
+  const pulseTicker = () => {
+    setTickerPulseSeq((n) => n + 1);
+  };
+
   const runIntroTutorialThenStart = async () => {
-    // guard against double-run
     if (introTutorialRanRef.current) return;
     introTutorialRanRef.current = true;
 
     const played = window.localStorage.getItem("hotseat_intro_tutorial_played") === "1";
     if (played) {
-      setMessages([]);
       await startFirstGeminiQuestion();
       return;
     }
 
     setIsIntroTutorialActive(true);
 
-    // show pointer to ticker for full intro
+    // Show overlay + pointer for full intro
     setShowTickerPointer(true);
 
-    // Show the tutorial answers, locked
+    // Show tutorial answers, locked, deterministic order
     setAnswerOptions({
       good: "Clear, engaging, and human.",
       evasive: "Vague, impersonal, and insincere.",
@@ -254,10 +258,9 @@ function App() {
     setOptionsOrder(["good", "evasive"]);
     setIsAnswerLocked(true);
 
-    // Keep a safe baseline and restore after tutorial
     const baselinePrice = STARTING_STOCK_PRICE;
 
-    // Force baseline display before movement
+    // Baseline before movement
     setInterviewState((prev) => ({
       ...prev,
       stockPrice: baselinePrice,
@@ -273,34 +276,29 @@ function App() {
       evasiveStreak: 0,
     }));
 
-    // Tutorial copy (shown in the same bubble system for now)
-    postJournalistLine("You’re about to go live. Remember — markets punish vague answers.");
-
-    // punish vagueness
+    // Overlay text (NOT chat bubbles)
+    setTutorialText("You’re about to go live. Remember — markets punish vague answers.");
     setTickerDirectionOverride("down");
     pulseHighlight("evasive", 350);
+    pulseTicker();
 
-    // sell-off
     const downTo = Number((baselinePrice - 0.5).toFixed(2));
     await tickPrice(baselinePrice, downTo, 3, 800);
 
-    // tiny pause before rebound
     await sleep(250);
 
-    postJournalistLine("Be clear and engaging, and we might be in for that Christmas bonus.");
-
-    // reward clarity
+    setTutorialText("Be clear and engaging, and we might be in for that Christmas bonus.");
     setTickerDirectionOverride("up");
     pulseHighlight("good", 350);
+    pulseTicker();
 
-    // rally
     const upTo = Number((baselinePrice + 5.0).toFixed(2));
     await tickPrice(downTo, upTo, 5, 1100);
 
-    postJournalistLine("Good luck.");
+    setTutorialText("Good luck.");
     await sleep(800);
 
-    // restore baseline before the real interview begins
+    // Restore baseline before real interview begins
     setInterviewState((prev) => ({
       ...prev,
       stockPrice: baselinePrice,
@@ -308,7 +306,8 @@ function App() {
       audienceSentiment: 50,
     }));
 
-    // cleanup tutorial UI signals
+    // Cleanup overlay + tutorial signals
+    setTutorialText("");
     setShowTickerPointer(false);
     setTickerDirectionOverride(null);
     setHighlightAnswerKey(null);
@@ -316,7 +315,9 @@ function App() {
     setIsIntroTutorialActive(false);
     window.localStorage.setItem("hotseat_intro_tutorial_played", "1");
 
-    // Now start the actual opening question
+    // optional: keep feed clean
+    setMessages([]);
+
     await startFirstGeminiQuestion();
   };
 
@@ -343,10 +344,11 @@ function App() {
       maxQuestions: TOTAL_QUESTIONS,
     });
 
-    // reset tutorial UI state in case of replay
+    // reset tutorial UI state
     setShowTickerPointer(false);
     setTickerDirectionOverride(null);
     setHighlightAnswerKey(null);
+    setTutorialText("");
     introTutorialRanRef.current = false;
 
     setPhase(GamePhase.INTRO);
@@ -355,8 +357,6 @@ function App() {
     window.setTimeout(async () => {
       setPhase(GamePhase.INTERVIEW);
       setIsLoading(false);
-
-      // run the tutorial first (once), then trigger Gemini
       await runIntroTutorialThenStart();
     }, 3000);
   };
@@ -383,11 +383,9 @@ function App() {
 
       let finalDelta = clamp(scored.delta, -5, 5);
 
-      // Button-specific move bands (2-option version)
       if (selectedKey === "good") finalDelta = clamp(finalDelta, 0.8, 3.5);
       if (selectedKey === "evasive") finalDelta = clamp(finalDelta, -3.5, -0.1);
 
-      // Contradiction always hurts
       if (response?.isContradiction) {
         finalDelta = Math.min(finalDelta, -0.8);
       }
@@ -453,8 +451,6 @@ function App() {
 
   const handleSelectAnswer = async (key: AnswerOptionKey) => {
     if (phase !== GamePhase.INTERVIEW) return;
-
-    // Block input during the tutorial
     if (isIntroTutorialActive) return;
 
     if (isLoading || isAnswerLocked) return;
@@ -702,12 +698,29 @@ function App() {
           }
           onSelectAnswer={handleSelectAnswer}
           onSendMessage={() => {}}
-          // NEW: tutorial signals
           highlightAnswerKey={highlightAnswerKey}
           tickerDirectionOverride={tickerDirectionOverride}
           showTickerPointer={showTickerPointer}
+          tickerPulseSeq={tickerPulseSeq}
           flashDurationMs={isIntroTutorialActive ? 350 : 600}
         />
+
+        {/* Tutorial overlay */}
+        {isIntroTutorialActive && (
+          <div className="absolute inset-0 z-[90] pointer-events-none">
+            <div className="absolute inset-0 bg-black/35 backdrop-blur-[3px]" />
+            <div className="absolute left-1/2 top-[18%] -translate-x-1/2 w-[min(820px,92vw)]">
+              <div className="bg-black/70 border border-white/10 rounded-2xl shadow-2xl px-5 py-4 md:px-7 md:py-5">
+                <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-400 font-bold mb-2">
+                  Producer feed
+                </div>
+                <div className="text-white text-lg md:text-2xl font-medium leading-snug">
+                  {tutorialText}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
