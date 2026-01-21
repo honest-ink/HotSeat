@@ -42,6 +42,9 @@ interface BroadcastUIProps {
 
   // show an arrow pointing at the stock ticker
   showTickerPointer?: boolean;
+
+  // increments to retrigger ticker pulse animation on demand
+  tickerPulseSeq?: number;
 }
 
 const BroadcastUI: React.FC<BroadcastUIProps> = ({
@@ -58,10 +61,11 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
   tickerDirectionOverride = null,
   flashDurationMs = 600,
   showTickerPointer = false,
+  tickerPulseSeq = 0,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // --- Stock Ticker Flash Logic ---
+  // --- Stock Ticker Flash Logic (number flash) ---
   const [flashClass, setFlashClass] = useState("");
   const prevPriceRef = useRef(state.stockPrice);
 
@@ -76,7 +80,33 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
     const timer = setTimeout(() => setFlashClass(""), flashDurationMs);
     return () => clearTimeout(timer);
   }, [state.stockPrice, flashDurationMs]);
-  // -------------------------------------
+  // ----------------------------------------------
+
+  // --- Tutorial: ticker box pulse (container pulse) ---
+  const [tickerPulseClass, setTickerPulseClass] = useState("");
+
+  // decide which icon direction to show
+  const isFailZone = state.stockPrice < FAIL_STOCK_PRICE;
+  const isNearFail = state.stockPrice < FAIL_STOCK_PRICE + 1.5;
+
+  const effectiveDirection: "up" | "down" =
+    tickerDirectionOverride ?? (isFailZone ? "down" : "up");
+
+  useEffect(() => {
+    if (!tickerPulseSeq) return;
+
+    // pulse class depends on current/tutorial direction
+    setTickerPulseClass(
+      effectiveDirection === "down"
+        ? "tutorial-ticker-pulse-down"
+        : "tutorial-ticker-pulse-up"
+    );
+
+    const t = window.setTimeout(() => setTickerPulseClass(""), 450);
+    return () => window.clearTimeout(t);
+    // NOTE: tickerPulseSeq triggers re-run; effectiveDirection is safe here
+  }, [tickerPulseSeq, effectiveDirection]);
+  // ----------------------------------------------------
 
   // Auto-scroll to bottom of chat
   useEffect(() => {
@@ -141,16 +171,6 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
     Math.min(answered, state.maxQuestions)
   )}/${state.maxQuestions}`;
 
-  const isFailZone = state.stockPrice < FAIL_STOCK_PRICE;
-  const isNearFail = state.stockPrice < FAIL_STOCK_PRICE + 1.5;
-
-  // Ticker icon direction:
-  // - tutorial can override
-  // - else use fail zone rule
-  const effectiveDirection: "up" | "down" =
-    tickerDirectionOverride ??
-    (isFailZone ? "down" : "up");
-
   // --- Pointer overlay anchored to ticker ---
   const tickerBoxRef = useRef<HTMLDivElement | null>(null);
   const [pointerPos, setPointerPos] = useState<{
@@ -199,7 +219,7 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
     <div className="absolute inset-0 z-10 flex flex-col pointer-events-none h-full max-h-[100dvh]">
       {/* Ticker pointer overlay */}
       <div
-        className="fixed z-[80] pointer-events-none transition-opacity duration-200"
+        className="fixed z-[95] pointer-events-none transition-opacity duration-200"
         style={{
           top: pointerPos.top,
           left: pointerPos.left,
@@ -248,7 +268,7 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
           {/* Stock */}
           <div
             ref={tickerBoxRef}
-            className="flex items-center gap-3 bg-black/60 backdrop-blur-md text-white px-4 py-2 rounded-lg border border-white/10 shadow-2xl"
+            className={`flex items-center gap-3 bg-black/60 backdrop-blur-md text-white px-4 py-2 rounded-lg border border-white/10 shadow-2xl ${tickerPulseClass}`}
           >
             <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider border-r border-gray-600 pr-3 mr-1">
               {tickerSymbol}
@@ -318,9 +338,7 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
                 typeof msg.stockImpact === "number" &&
                 msg.stockImpact !== 0;
 
-              // Don’t render totally empty bubbles (used to happen in earlier ticker tests)
               const isTrulyEmpty = !msg.text || msg.text.trim().length === 0;
-
               if (isTrulyEmpty) return null;
 
               return (
@@ -431,9 +449,7 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
                             ? "bg-white/5 border-white/15 hover:bg-white/10 text-white"
                             : "bg-white/5 border-white/10 text-zinc-500"
                         } ${
-                          isHighlighted
-                            ? "ring-2 ring-white/50 bg-white/10"
-                            : ""
+                          isHighlighted ? "ring-2 ring-white/50 bg-white/10" : ""
                         }`}
                       >
                         <div className="text-sm md:text-base leading-snug font-medium">
