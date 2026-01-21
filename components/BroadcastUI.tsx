@@ -179,7 +179,7 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
     <div className="absolute inset-0 z-10 flex flex-col pointer-events-none h-full max-h-[100dvh]">
       {/* Tutorial dim + spotlight overlay */}
       {showTickerPointer && (
-        <div className="absolute inset-0 z-30 pointer-events-none">
+        <div className="absolute inset-0 z-20 pointer-events-none">
           <div
             className="absolute inset-0"
             style={{
@@ -199,7 +199,7 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
       )}
 
       {/* --- TOP HEADER (Global) --- */}
-      <div className="absolute top-0 left-0 right-0 p-4 md:p-6 flex justify-between items-start z-50">
+      <div className="absolute top-0 left-0 right-0 p-4 md:p-6 flex justify-between items-start z-[120]">
         {/* Live Bug */}
         <div className="flex flex-col drop-shadow-lg">
           <div className="bg-[#cc0000] text-white px-3 py-1 font-bold text-xs md:text-sm tracking-widest inline-flex items-center gap-2 shadow-lg rounded-sm">
@@ -224,7 +224,7 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
           {/* Stock */}
           <div
             ref={tickerBoxRef}
-            className={`flex items-center gap-3 bg-black/60 backdrop-blur-md text-white px-4 py-2 rounded-lg border border-white/10 shadow-2xl ${tickerPulseClass}`}
+            className={`relative z-[140] flex items-center gap-3 bg-black/60 backdrop-blur-md text-white px-4 py-2 rounded-lg border border-white/10 shadow-2xl ${tickerPulseClass}`}
           >
             <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider border-r border-gray-600 pr-3 mr-1">
               {tickerSymbol}
