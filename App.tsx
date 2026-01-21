@@ -296,7 +296,7 @@ function App() {
     await tickPrice(downTo, upTo, 5, 1100);
 
     setTutorialText("Good luck.");
-    await sleep(800);
+    await sleep(800 * TUTORIAL_TIME_MULTIPLIE);
 
     // Restore baseline before real interview begins
     setInterviewState((prev) => ({
