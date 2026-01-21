@@ -285,7 +285,7 @@ function App() {
     const downTo = Number((baselinePrice - 0.5).toFixed(2));
     await tickPrice(baselinePrice, downTo, 3, 800);
 
-    await sleep(250);
+    await sleep(250 * TUTORIAL_TIME_MULTIPLIER);
 
     setTutorialText("Be clear and engaging, and we might be in for that Christmas bonus.");
     setTickerDirectionOverride("up");
