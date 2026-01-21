@@ -216,17 +216,40 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
   // ----------------------------------------
 
   return (
-    <div className="absolute inset-0 z-10 flex flex-col pointer-events-none h-full max-h-[100dvh]">
-      {/* Ticker pointer overlay */}
-      <div
-        className="fixed z-[95] pointer-events-none transition-opacity duration-200"
-        style={{
-          top: pointerPos.top,
-          left: pointerPos.left,
-          opacity: pointerPos.opacity,
-          transform: "translateY(-50%)",
-        }}
-      >
+  <div className="absolute inset-0 z-10 flex flex-col pointer-events-none h-full max-h-[100dvh]">
+
+    {/* Tutorial dim + spotlight overlay (below ticker + answers) */}
+    {showTickerPointer && (
+      <div className="absolute inset-0 z-30 pointer-events-none">
+        <div
+          className="absolute inset-0"
+          style={{
+            background: `
+              radial-gradient(
+                circle 140px at ${pointerPos.left + 80}px ${pointerPos.top}px,
+                rgba(0,0,0,0) 0%,
+                rgba(0,0,0,0) 45%,
+                rgba(0,0,0,0.65) 70%,
+                rgba(0,0,0,0.85) 100%
+              )
+            `,
+            backdropFilter: "blur(2px)",
+          }}
+        />
+      </div>
+    )}
+
+    {/* Ticker pointer overlay */}
+    <div
+      className="fixed z-[95] pointer-events-none transition-opacity duration-200"
+      style={{
+        top: pointerPos.top,
+        left: pointerPos.left,
+        opacity: pointerPos.opacity,
+        transform: "translateY(-50%)",
+      }}
+    >
+
         <div className="flex items-center gap-2">
           <div className="w-10 h-[2px] bg-white/80" />
           <div
