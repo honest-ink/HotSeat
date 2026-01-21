@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { TrendingUp, TrendingDown, AlertCircle, Mic } from "lucide-react";
 import {
   Message,
@@ -65,6 +66,10 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // mount flag for portal (avoids SSR/hydration issues)
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => setIsMounted(true), []);
+
   // --- Stock Ticker Flash Logic (number flash) ---
   const [flashClass, setFlashClass] = useState("");
   const prevPriceRef = useRef(state.stockPrice);
@@ -95,7 +100,6 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
   useEffect(() => {
     if (!tickerPulseSeq) return;
 
-    // pulse class depends on current/tutorial direction
     setTickerPulseClass(
       effectiveDirection === "down"
         ? "tutorial-ticker-pulse-down"
@@ -104,7 +108,6 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
 
     const t = window.setTimeout(() => setTickerPulseClass(""), 450);
     return () => window.clearTimeout(t);
-    // NOTE: tickerPulseSeq triggers re-run; effectiveDirection is safe here
   }, [tickerPulseSeq, effectiveDirection]);
   // ----------------------------------------------------
 
@@ -123,7 +126,7 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
 
   // Order of buttons:
   // 1) If App provides optionsOrder, use it (tutorial needs deterministic order)
-  // 2) else, shuffle deterministically by questionCount so "good" isn’t always first
+  // 2) else, flip by questionCount so "good" isn’t always first
   const buttonOrder = useMemo<AnswerOptionKey[]>(() => {
     if (optionsOrder && optionsOrder.length === 2) return optionsOrder;
 
@@ -171,9 +174,64 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
     Math.min(answered, state.maxQuestions)
   )}/${state.maxQuestions}`;
 
-  // --- (Arrow/pointer removed) ---
+  // kept for ref compatibility
   const tickerBoxRef = useRef<HTMLDivElement | null>(null);
-  // --------------------------------
+
+  const topHeader = (
+    <div className="fixed top-0 left-0 right-0 p-4 md:p-6 flex justify-between items-start z-[9999] pointer-events-none">
+      {/* Live Bug */}
+      <div className="flex flex-col drop-shadow-lg pointer-events-none">
+        <div className="bg-[#cc0000] text-white px-3 py-1 font-bold text-xs md:text-sm tracking-widest inline-flex items-center gap-2 shadow-lg rounded-sm">
+          <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+          LIVE
+        </div>
+        <div className="bg-black/80 text-white text-[10px] px-2 py-0.5 tracking-wider uppercase backdrop-blur-sm">
+          London
+        </div>
+      </div>
+
+      {/* Right cluster: Progress + Stock */}
+      <div className="flex flex-col items-end gap-2 pointer-events-none">
+        {/* Progress */}
+        <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md text-white px-3 py-2 rounded-lg border border-white/10 shadow-2xl">
+          <Mic size={16} className="text-white" />
+          <div className="font-mono font-bold text-lg tracking-widest">
+            {progressLabel}
+          </div>
+        </div>
+
+        {/* Stock */}
+        <div
+          ref={tickerBoxRef}
+          className={`relative z-[9999] flex items-center gap-3 bg-black/60 backdrop-blur-md text-white px-4 py-2 rounded-lg border border-white/10 shadow-2xl ${tickerPulseClass}`}
+        >
+          <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider border-r border-gray-600 pr-3 mr-1">
+            {tickerSymbol}
+          </div>
+
+          <div
+            className={`font-mono font-bold text-lg flex items-center gap-2 ${flashClass} ${
+              isFailZone ? "text-red-400" : "text-white"
+            }`}
+          >
+            {state.stockPrice.toFixed(2)}
+            {effectiveDirection === "down" ? (
+              <TrendingDown size={18} />
+            ) : (
+              <TrendingUp size={18} />
+            )}
+          </div>
+        </div>
+
+        {isNearFail && !isFailZone && (
+          <div className="bg-yellow-500/90 text-black text-[10px] font-bold px-2 py-1 rounded flex items-center gap-1">
+            <AlertCircle size={12} />
+            AT RISK
+          </div>
+        )}
+      </div>
+    </div>
+  );
 
   return (
     <div className="absolute inset-0 z-10 flex flex-col pointer-events-none h-full max-h-[100dvh]">
@@ -198,60 +256,8 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
         </div>
       )}
 
-      {/* --- TOP HEADER (Global) --- */}
-      <div className="absolute top-0 left-0 right-0 p-4 md:p-6 flex justify-between items-start z-[120]">
-        {/* Live Bug */}
-        <div className="flex flex-col drop-shadow-lg">
-          <div className="bg-[#cc0000] text-white px-3 py-1 font-bold text-xs md:text-sm tracking-widest inline-flex items-center gap-2 shadow-lg rounded-sm">
-            <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-            LIVE
-          </div>
-          <div className="bg-black/80 text-white text-[10px] px-2 py-0.5 tracking-wider uppercase backdrop-blur-sm">
-            London
-          </div>
-        </div>
-
-        {/* Right cluster: Progress + Stock */}
-        <div className="flex flex-col items-end gap-2">
-          {/* Progress */}
-          <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md text-white px-3 py-2 rounded-lg border border-white/10 shadow-2xl">
-            <Mic size={16} className="text-white" />
-            <div className="font-mono font-bold text-lg tracking-widest">
-              {progressLabel}
-            </div>
-          </div>
-
-          {/* Stock */}
-          <div
-            ref={tickerBoxRef}
-            className={`relative z-[140] flex items-center gap-3 bg-black/60 backdrop-blur-md text-white px-4 py-2 rounded-lg border border-white/10 shadow-2xl ${tickerPulseClass}`}
-          >
-            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider border-r border-gray-600 pr-3 mr-1">
-              {tickerSymbol}
-            </div>
-
-            <div
-              className={`font-mono font-bold text-lg flex items-center gap-2 ${flashClass} ${
-                isFailZone ? "text-red-400" : "text-white"
-              }`}
-            >
-              {state.stockPrice.toFixed(2)}
-              {effectiveDirection === "down" ? (
-                <TrendingDown size={18} />
-              ) : (
-                <TrendingUp size={18} />
-              )}
-            </div>
-          </div>
-
-          {isNearFail && !isFailZone && (
-            <div className="bg-yellow-500/90 text-black text-[10px] font-bold px-2 py-1 rounded flex items-center gap-1">
-              <AlertCircle size={12} />
-              AT RISK
-            </div>
-          )}
-        </div>
-      </div>
+      {/* --- TOP HEADER (ported to body so it sits above App tutorial blur) --- */}
+      {isMounted ? createPortal(topHeader, document.body) : null}
 
       {/* --- MAIN CONTENT AREA --- */}
       <div className="flex-1 flex flex-col md:flex-row-reverse relative overflow-hidden">
