@@ -36,6 +36,10 @@ function optionKeyToScoreCategory(key: AnswerOptionKey): AnswerCategory {
   return key === "good" ? "good" : "evasive";
 }
 
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+}
+
 function App() {
   const [phase, setPhase] = useState<GamePhase>(GamePhase.SETUP);
   const [company, setCompany] = useState<CompanyProfile>({ name: "", mission: "" });
@@ -63,6 +67,10 @@ function App() {
   });
 
   const lastQuestionRef = useRef<string | undefined>(undefined);
+
+  // ---- INTRO TUTORIAL ----
+  const [isIntroTutorialActive, setIsIntroTutorialActive] = useState(false);
+  const introTutorialRanRef = useRef(false);
 
   // ---- AUDIO ----
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -103,69 +111,6 @@ function App() {
   const handleSetupSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (company.name && company.mission) startInterview();
-  };
-
-  const startInterview = async () => {
-    clearTimers();
-    setMessages([]);
-    lastQuestionRef.current = undefined;
-
-    setAnswerOptions(null);
-    setOptionsOrder(null);
-    setIsAnswerLocked(false);
-
-    setInterviewState({
-      stockPrice: STARTING_STOCK_PRICE,
-      lowestPrice: STARTING_STOCK_PRICE,
-      awaitingAnswer: false,
-      evasiveStreak: 0,
-      audienceSentiment: 50,
-      outcome: undefined,
-      worstAnswer: undefined,
-      startedAtMs: undefined,
-      questionAskedAtMs: undefined,
-      questionCount: 0,
-      maxQuestions: TOTAL_QUESTIONS,
-    });
-
-    setPhase(GamePhase.INTRO);
-    await startAudio();
-
-    window.setTimeout(async () => {
-      setPhase(GamePhase.INTERVIEW);
-      setIsLoading(true);
-
-      try {
-        const opening = (await GeminiService.initInterview(company)) as GeminiResponse;
-
-        postJournalistLine(opening.text);
-        lastQuestionRef.current = opening.text;
-
-        setAnswerOptions(opening.options ?? null);
-        setOptionsOrder(opening.optionsOrder ?? null);
-        setIsAnswerLocked(false);
-
-        setInterviewState((prev) => ({
-          ...prev,
-          startedAtMs: Date.now(),
-          questionAskedAtMs: Date.now(),
-          awaitingAnswer: true,
-          questionCount: 1,
-          maxQuestions: TOTAL_QUESTIONS,
-        }));
-      } catch (err) {
-        console.error(err);
-        postJournalistLine(
-          "We’ve hit a technical issue. Refresh and try again in a moment.",
-          { category: "bad" }
-        );
-        setAnswerOptions(null);
-        setOptionsOrder(null);
-        setInterviewState((prev) => ({ ...prev, awaitingAnswer: false }));
-      } finally {
-        setIsLoading(false);
-      }
-    }, 3000);
   };
 
   const postMessage = (msg: Message) => setMessages((prev) => [...prev, msg]);
@@ -220,6 +165,169 @@ function App() {
 
       return { ...prev, stockPrice: clamped, lowestPrice, audienceSentiment, worstAnswer };
     });
+  };
+
+  const startFirstGeminiQuestion = async () => {
+    setIsLoading(true);
+
+    try {
+      const opening = (await GeminiService.initInterview(company)) as GeminiResponse;
+
+      postJournalistLine(opening.text);
+      lastQuestionRef.current = opening.text;
+
+      setAnswerOptions(opening.options ?? null);
+      setOptionsOrder(opening.optionsOrder ?? null);
+      setIsAnswerLocked(false);
+
+      setInterviewState((prev) => ({
+        ...prev,
+        startedAtMs: Date.now(),
+        questionAskedAtMs: Date.now(),
+        awaitingAnswer: true,
+        questionCount: 1,
+        maxQuestions: TOTAL_QUESTIONS,
+      }));
+    } catch (err) {
+      console.error(err);
+      postJournalistLine(
+        "We’ve hit a technical issue. Refresh and try again in a moment.",
+        { category: "bad" }
+      );
+      setAnswerOptions(null);
+      setOptionsOrder(null);
+      setInterviewState((prev) => ({ ...prev, awaitingAnswer: false }));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const tickPrice = async (
+    from: number,
+    to: number,
+    steps: number,
+    totalMs: number,
+    tick: "up" | "down"
+  ) => {
+    const stepMs = Math.max(1, Math.floor(totalMs / steps));
+    for (let i = 1; i <= steps; i++) {
+      const next = from + ((to - from) * i) / steps;
+      const nextFixed = Number(next.toFixed(2));
+
+      // Update ONLY the displayed stockPrice (don’t touch lowestPrice / sentiment)
+      setInterviewState((prev) => ({ ...prev, stockPrice: nextFixed }));
+      postJournalistLine("", { tick }); // tiny nudge for UI if you use tick indicators
+      await sleep(stepMs);
+    }
+  };
+
+  const runIntroTutorialThenStart = async () => {
+    // guard against double-run
+    if (introTutorialRanRef.current) return;
+    introTutorialRanRef.current = true;
+
+    const played = window.localStorage.getItem("hotseat_intro_tutorial_played") === "1";
+    if (played) {
+      await startFirstGeminiQuestion();
+      return;
+    }
+
+    setIsIntroTutorialActive(true);
+
+    // Show the tutorial answers, locked
+    setAnswerOptions({
+      good: "Clear, engaging, and human.",
+      evasive: "Vague, impersonal, and insincere.",
+    });
+    setOptionsOrder(["good", "evasive"]);
+    setIsAnswerLocked(true);
+
+    // Keep a safe baseline and restore after tutorial
+    const baselinePrice = STARTING_STOCK_PRICE;
+
+    // Force baseline display before movement
+    setInterviewState((prev) => ({
+      ...prev,
+      stockPrice: baselinePrice,
+      lowestPrice: baselinePrice,
+      audienceSentiment: 50,
+      awaitingAnswer: false,
+      startedAtMs: undefined,
+      questionAskedAtMs: undefined,
+      questionCount: 0,
+      maxQuestions: TOTAL_QUESTIONS,
+      outcome: undefined,
+      worstAnswer: undefined,
+      evasiveStreak: 0,
+    }));
+
+    // Tutorial copy (shown in the same bubble system for now)
+    postJournalistLine("You’re about to go live. Remember — markets punish vague answers.");
+
+    // sell-off
+    const downTo = Number((baselinePrice - 0.5).toFixed(2));
+    await tickPrice(baselinePrice, downTo, 3, 800, "down");
+
+    // tiny pause before rebound
+    await sleep(250);
+
+    postJournalistLine("Be clear and engaging, and we might be in for that Christmas bonus.");
+
+    // rally
+    const upTo = Number((baselinePrice + 5.0).toFixed(2));
+    await tickPrice(downTo, upTo, 5, 1100, "up");
+
+    postJournalistLine("Good luck.");
+    await sleep(800);
+
+    // restore baseline before the real interview begins
+    setInterviewState((prev) => ({
+      ...prev,
+      stockPrice: baselinePrice,
+      lowestPrice: baselinePrice,
+      audienceSentiment: 50,
+    }));
+
+    setIsIntroTutorialActive(false);
+    window.localStorage.setItem("hotseat_intro_tutorial_played", "1");
+
+    // Now start the actual opening question
+    await startFirstGeminiQuestion();
+  };
+
+  const startInterview = async () => {
+    clearTimers();
+    setMessages([]);
+    lastQuestionRef.current = undefined;
+
+    setAnswerOptions(null);
+    setOptionsOrder(null);
+    setIsAnswerLocked(false);
+
+    setInterviewState({
+      stockPrice: STARTING_STOCK_PRICE,
+      lowestPrice: STARTING_STOCK_PRICE,
+      awaitingAnswer: false,
+      evasiveStreak: 0,
+      audienceSentiment: 50,
+      outcome: undefined,
+      worstAnswer: undefined,
+      startedAtMs: undefined,
+      questionAskedAtMs: undefined,
+      questionCount: 0,
+      maxQuestions: TOTAL_QUESTIONS,
+    });
+
+    setPhase(GamePhase.INTRO);
+    await startAudio();
+
+    window.setTimeout(async () => {
+      setPhase(GamePhase.INTERVIEW);
+      setIsLoading(false);
+
+      // run the tutorial first (once), then trigger Gemini
+      await runIntroTutorialThenStart();
+    }, 3000);
   };
 
   const resolveSelectedAnswer = async (selectedText: string, selectedKey: AnswerOptionKey) => {
@@ -314,6 +422,10 @@ function App() {
 
   const handleSelectAnswer = async (key: AnswerOptionKey) => {
     if (phase !== GamePhase.INTERVIEW) return;
+
+    // Block input during the tutorial
+    if (isIntroTutorialActive) return;
+
     if (isLoading || isAnswerLocked) return;
     if (!interviewState.awaitingAnswer) return;
     if (!answerOptions) return;
@@ -551,7 +663,12 @@ function App() {
           companyName={company.name}
           answerOptions={answerOptions ?? undefined}
           optionsOrder={optionsOrder ?? undefined}
-          isAnswerLocked={isAnswerLocked || isLoading || !interviewState.awaitingAnswer}
+          isAnswerLocked={
+            isIntroTutorialActive ||
+            isAnswerLocked ||
+            isLoading ||
+            !interviewState.awaitingAnswer
+          }
           onSelectAnswer={handleSelectAnswer}
           onSendMessage={() => {}}
         />
@@ -561,4 +678,3 @@ function App() {
 }
 
 export default App;
-
