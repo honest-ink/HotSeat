@@ -286,18 +286,48 @@ function App() {
     pulseHighlight("evasive", 350);
     pulseTicker();
 
-    const downTo = Number((baselinePrice - 0.5).toFixed(2));
-    await tickPrice(baselinePrice, downTo, 3, tut(800));
+  // --- BAD ANSWER DEMO (clear, single hit) ---
+const badTo = 97.5;
 
-    await sleep(tut(250));
+setTutorialText("You’re about to go live. Remember — markets punish vague answers.");
+setTickerDirectionOverride("down");
+pulseHighlight("evasive", 350);
 
-    setTutorialText("Be clear and engaging, and we might be in for that Christmas bonus.");
-    setTickerDirectionOverride("up");
-    pulseHighlight("good", 350);
-    pulseTicker();
+// Start from baseline, then pulse + jump once (one red flash)
+setInterviewState((prev) => ({
+  ...prev,
+  stockPrice: baselinePrice,
+  lowestPrice: Math.min(prev.lowestPrice, baselinePrice),
+}));
+pulseTicker();
 
-    const upTo = Number((baselinePrice + 5.0).toFixed(2));
-    await tickPrice(downTo, upTo, 5, tut(1100));
+// Give the pulse a beat to read, then jump to the target
+await sleep(tut(450));
+setInterviewState((prev) => ({
+  ...prev,
+  stockPrice: badTo,
+  lowestPrice: Math.min(prev.lowestPrice, badTo),
+}));
+
+await sleep(tut(900));
+
+// --- GOOD ANSWER DEMO (clear, single hit) ---
+const goodTo = 102.7;
+
+setTutorialText("Be clear and engaging, and we might be in for that Christmas bonus.");
+setTickerDirectionOverride("up");
+pulseHighlight("good", 350);
+
+// Pulse again, then jump once (one green flash)
+pulseTicker();
+await sleep(tut(450));
+setInterviewState((prev) => ({
+  ...prev,
+  stockPrice: goodTo,
+  lowestPrice: Math.min(prev.lowestPrice, goodTo),
+}));
+
+await sleep(tut(900));
 
     setTutorialText("Good luck.");
     await sleep(tut(800));
