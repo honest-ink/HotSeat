@@ -243,7 +243,8 @@ const runIntroTutorialThenStart = async () => {
   if (introTutorialRanRef.current) return;
   introTutorialRanRef.current = true;
 
-  const played = window.localStorage.getItem("hotseat_intro_tutorial_played") === "1";
+  const played =
+    window.localStorage.getItem("hotseat_intro_tutorial_played") === "1";
   if (played) {
     await startFirstGeminiQuestion();
     return;
@@ -251,20 +252,16 @@ const runIntroTutorialThenStart = async () => {
 
   setIsIntroTutorialActive(true);
 
-  // Show overlay + pointer for full intro
-  setShowTickerPointer(true);
-
-  // Show tutorial answers, locked, deterministic order
-  setAnswerOptions({
-    good: "Clear, engaging, and human.",
-    evasive: "Vague, impersonal, and insincere.",
-  });
-  setOptionsOrder(["good", "evasive"]);
-  setIsAnswerLocked(true);
+  // keep the overlay clean (no spotlight / arrows)
+  setShowTickerPointer(false);
 
   const baselinePrice = STARTING_STOCK_PRICE;
 
-  // Baseline before movement
+  // reset state for the intro (no answer options, no changes to price)
+  setAnswerOptions(null);
+  setOptionsOrder(null);
+  setIsAnswerLocked(true);
+
   setInterviewState((prev) => ({
     ...prev,
     stockPrice: baselinePrice,
@@ -280,62 +277,22 @@ const runIntroTutorialThenStart = async () => {
     evasiveStreak: 0,
   }));
 
-  // --- BAD ANSWER DEMO ---
-  const badTo = 97.5;
-
-  setTutorialText("You’re about to go live. Remember — markets punish vague answers.");
-  setTickerDirectionOverride("down");
-  pulseHighlight("evasive", 350);
-
-  // Set the number FIRST so the red flash happens exactly when 97.5 appears
-  setInterviewState((prev) => ({
-    ...prev,
-    stockPrice: badTo,
-    lowestPrice: Math.min(prev.lowestPrice, badTo),
-  }));
-
-  // Pulse immediately after the number updates (so pulse + flash land together)
-  pulseTicker();
-
-  await sleep(tut(900));
-
-  // --- GOOD ANSWER DEMO ---
-  const goodTo = 102.7;
-
-  setTutorialText("Be clear and engaging, and we might be in for that Christmas bonus.");
+  // One line, one green pulse (no number change)
+  setTutorialText(
+    "Remember, clear and sincere answers will boost your stock price. Good luck!"
+  );
   setTickerDirectionOverride("up");
-  pulseHighlight("good", 350);
-
-  // Set the number FIRST so the green flash happens exactly when 102.7 appears
-  setInterviewState((prev) => ({
-    ...prev,
-    stockPrice: goodTo,
-    lowestPrice: Math.min(prev.lowestPrice, goodTo),
-  }));
-
-  // Pulse immediately after the number updates
   pulseTicker();
 
-  await sleep(tut(900));
+  // hold long enough to read
+  await sleep(tut(1600));
 
-  setTutorialText("Good luck.");
-  await sleep(tut(800));
-
-  // Restore baseline before real interview begins
-  setInterviewState((prev) => ({
-    ...prev,
-    stockPrice: baselinePrice,
-    lowestPrice: baselinePrice,
-    audienceSentiment: 50,
-  }));
-
-  // Cleanup overlay + tutorial signals
+  // cleanup
   setTutorialText("");
-  setShowTickerPointer(false);
   setTickerDirectionOverride(null);
   setHighlightAnswerKey(null);
-
   setIsIntroTutorialActive(false);
+
   window.localStorage.setItem("hotseat_intro_tutorial_played", "1");
 
   // optional: keep feed clean
@@ -343,6 +300,7 @@ const runIntroTutorialThenStart = async () => {
 
   await startFirstGeminiQuestion();
 };
+
 
   const startInterview = async () => {
     clearTimers();
