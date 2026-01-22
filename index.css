@@ -92,13 +92,13 @@
 
 /* Applied to the WHOLE ticker container during tutorial */
 .tutorial-ticker-pulse-up {
-  animation: ticker-pulse-up 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: ticker-pulse-up 1.6s cubic-bezier(0.16, 1, 0.3, 1);
   transform-origin: center;
   will-change: transform, box-shadow, filter;
 }
 
 .tutorial-ticker-pulse-down {
-  animation: ticker-pulse-down 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: ticker-pulse-down 1.6s cubic-bezier(0.16, 1, 0.3, 1);
   transform-origin: center;
   will-change: transform, box-shadow, filter;
 }
