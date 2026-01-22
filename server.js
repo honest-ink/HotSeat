@@ -61,7 +61,7 @@ evasive: dodges the question (based on the Stage rules above)
 Rules for answer options
 Provide EXACTLY two options: "good" and "evasive".
 Each option must be EXACTLY one sentence.
-Each option must be MAX 15 words.
+Each option must be MAX 13 words.
 Both options must answer the SAME question.
 They must be meaningfully different in quality based on the Stage rules defined above.
 The good option must directly address the specific question being asked.
