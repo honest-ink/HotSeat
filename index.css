@@ -55,7 +55,7 @@
 
   /* Big pop */
   18% {
-    transform: translateZ(0) scale(1.16);
+    transform: translateZ(0) scale(1.2);
     box-shadow:
       0 0 0 3px rgba(239, 68, 68, 0.55),
       0 0 28px rgba(239, 68, 68, 0.85),
