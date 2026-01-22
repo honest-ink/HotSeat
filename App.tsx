@@ -239,121 +239,110 @@ function App() {
     setTickerPulseSeq((n) => n + 1);
   };
 
-  const runIntroTutorialThenStart = async () => {
-    if (introTutorialRanRef.current) return;
-    introTutorialRanRef.current = true;
+const runIntroTutorialThenStart = async () => {
+  if (introTutorialRanRef.current) return;
+  introTutorialRanRef.current = true;
 
-    const played = window.localStorage.getItem("hotseat_intro_tutorial_played") === "1";
-    if (played) {
-      await startFirstGeminiQuestion();
-      return;
-    }
-
-    setIsIntroTutorialActive(true);
-
-    // Show overlay + pointer for full intro
-    setShowTickerPointer(true);
-
-    // Show tutorial answers, locked, deterministic order
-    setAnswerOptions({
-      good: "Clear, engaging, and human.",
-      evasive: "Vague, impersonal, and insincere.",
-    });
-    setOptionsOrder(["good", "evasive"]);
-    setIsAnswerLocked(true);
-
-    const baselinePrice = STARTING_STOCK_PRICE;
-
-    // Baseline before movement
-    setInterviewState((prev) => ({
-      ...prev,
-      stockPrice: baselinePrice,
-      lowestPrice: baselinePrice,
-      audienceSentiment: 50,
-      awaitingAnswer: false,
-      startedAtMs: undefined,
-      questionAskedAtMs: undefined,
-      questionCount: 0,
-      maxQuestions: TOTAL_QUESTIONS,
-      outcome: undefined,
-      worstAnswer: undefined,
-      evasiveStreak: 0,
-    }));
-
-    // Overlay text (NOT chat bubbles)
-    setTutorialText("You’re about to go live. Remember — markets punish vague answers.");
-    setTickerDirectionOverride("down");
-    pulseHighlight("evasive", 350);
-    pulseTicker();
-
-  // --- BAD ANSWER DEMO (clear, single hit) ---
-const badTo = 97.5;
-
-setTutorialText("You’re about to go live. Remember — markets punish vague answers.");
-setTickerDirectionOverride("down");
-pulseHighlight("evasive", 350);
-
-// Start from baseline, then pulse + jump once (one red flash)
-setInterviewState((prev) => ({
-  ...prev,
-  stockPrice: baselinePrice,
-  lowestPrice: Math.min(prev.lowestPrice, baselinePrice),
-}));
-pulseTicker();
-
-// Give the pulse a beat to read, then jump to the target
-await sleep(tut(450));
-setInterviewState((prev) => ({
-  ...prev,
-  stockPrice: badTo,
-  lowestPrice: Math.min(prev.lowestPrice, badTo),
-}));
-
-await sleep(tut(900));
-
-// --- GOOD ANSWER DEMO (clear, single hit) ---
-const goodTo = 102.7;
-
-setTutorialText("Be clear and engaging, and we might be in for that Christmas bonus.");
-setTickerDirectionOverride("up");
-pulseHighlight("good", 350);
-
-// Pulse again, then jump once (one green flash)
-pulseTicker();
-await sleep(tut(450));
-setInterviewState((prev) => ({
-  ...prev,
-  stockPrice: goodTo,
-  lowestPrice: Math.min(prev.lowestPrice, goodTo),
-}));
-
-await sleep(tut(900));
-
-    setTutorialText("Good luck.");
-    await sleep(tut(800));
-
-    // Restore baseline before real interview begins
-    setInterviewState((prev) => ({
-      ...prev,
-      stockPrice: baselinePrice,
-      lowestPrice: baselinePrice,
-      audienceSentiment: 50,
-    }));
-
-    // Cleanup overlay + tutorial signals
-    setTutorialText("");
-    setShowTickerPointer(false);
-    setTickerDirectionOverride(null);
-    setHighlightAnswerKey(null);
-
-    setIsIntroTutorialActive(false);
-    window.localStorage.setItem("hotseat_intro_tutorial_played", "1");
-
-    // optional: keep feed clean
-    setMessages([]);
-
+  const played = window.localStorage.getItem("hotseat_intro_tutorial_played") === "1";
+  if (played) {
     await startFirstGeminiQuestion();
-  };
+    return;
+  }
+
+  setIsIntroTutorialActive(true);
+
+  // Show overlay + pointer for full intro
+  setShowTickerPointer(true);
+
+  // Show tutorial answers, locked, deterministic order
+  setAnswerOptions({
+    good: "Clear, engaging, and human.",
+    evasive: "Vague, impersonal, and insincere.",
+  });
+  setOptionsOrder(["good", "evasive"]);
+  setIsAnswerLocked(true);
+
+  const baselinePrice = STARTING_STOCK_PRICE;
+
+  // Baseline before movement
+  setInterviewState((prev) => ({
+    ...prev,
+    stockPrice: baselinePrice,
+    lowestPrice: baselinePrice,
+    audienceSentiment: 50,
+    awaitingAnswer: false,
+    startedAtMs: undefined,
+    questionAskedAtMs: undefined,
+    questionCount: 0,
+    maxQuestions: TOTAL_QUESTIONS,
+    outcome: undefined,
+    worstAnswer: undefined,
+    evasiveStreak: 0,
+  }));
+
+  // --- BAD ANSWER DEMO ---
+  const badTo = 97.5;
+
+  setTutorialText("You’re about to go live. Remember — markets punish vague answers.");
+  setTickerDirectionOverride("down");
+  pulseHighlight("evasive", 350);
+
+  // Set the number FIRST so the red flash happens exactly when 97.5 appears
+  setInterviewState((prev) => ({
+    ...prev,
+    stockPrice: badTo,
+    lowestPrice: Math.min(prev.lowestPrice, badTo),
+  }));
+
+  // Pulse immediately after the number updates (so pulse + flash land together)
+  pulseTicker();
+
+  await sleep(tut(900));
+
+  // --- GOOD ANSWER DEMO ---
+  const goodTo = 102.7;
+
+  setTutorialText("Be clear and engaging, and we might be in for that Christmas bonus.");
+  setTickerDirectionOverride("up");
+  pulseHighlight("good", 350);
+
+  // Set the number FIRST so the green flash happens exactly when 102.7 appears
+  setInterviewState((prev) => ({
+    ...prev,
+    stockPrice: goodTo,
+    lowestPrice: Math.min(prev.lowestPrice, goodTo),
+  }));
+
+  // Pulse immediately after the number updates
+  pulseTicker();
+
+  await sleep(tut(900));
+
+  setTutorialText("Good luck.");
+  await sleep(tut(800));
+
+  // Restore baseline before real interview begins
+  setInterviewState((prev) => ({
+    ...prev,
+    stockPrice: baselinePrice,
+    lowestPrice: baselinePrice,
+    audienceSentiment: 50,
+  }));
+
+  // Cleanup overlay + tutorial signals
+  setTutorialText("");
+  setShowTickerPointer(false);
+  setTickerDirectionOverride(null);
+  setHighlightAnswerKey(null);
+
+  setIsIntroTutorialActive(false);
+  window.localStorage.setItem("hotseat_intro_tutorial_played", "1");
+
+  // optional: keep feed clean
+  setMessages([]);
+
+  await startFirstGeminiQuestion();
+};
 
   const startInterview = async () => {
     clearTimers();
