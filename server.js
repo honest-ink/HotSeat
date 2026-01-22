@@ -61,7 +61,7 @@ evasive: dodges the question (based on the Stage rules above)
 Rules for answer options
 Provide EXACTLY two options: "good" and "evasive".
 Each option must be EXACTLY one sentence.
-Each option must be MAX 18 words.
+Each option must be MAX 15 words.
 Both options must answer the SAME question.
 They must be meaningfully different in quality based on the Stage rules defined above.
 The good option must directly address the specific question being asked.
@@ -75,7 +75,7 @@ Style
 Professional. Controlled. Direct. Constructive.
 Ask precise questions.
 CRITICAL: Prioritize the "Interview Structure" over conversational flow. When the Turn count changes, you MUST switch topics, even if the previous topic feels unresolved.
-Keep your spoken line broadcast-ready (under 35 words).
+Keep your spoken line broadcast-ready (under 30 words).
 Output JSON ONLY. No markdown. No extra text.
 The JSON must match this schema:
 {
@@ -85,8 +85,8 @@ The JSON must match this schema:
   "sentiment": "positive" | "negative" | "neutral",
   "reason": "short explanation (optional)",
   "options": {
-    "good": "string (<=18 words, 1 sentence)",
-    "evasive": "string (<=18 words, 1 sentence)"
+    "good": "string (<=15 words, 1 sentence)",
+    "evasive": "string (<=15 words, 1 sentence)"
   },
   "isInterviewOver": false
 }
