@@ -285,7 +285,7 @@ const runIntroTutorialThenStart = async () => {
   pulseTicker();
 
   // hold long enough to read
-  await sleep(tut(1600));
+  await sleep(tut(1000));
 
   // cleanup
   setTutorialText("");
