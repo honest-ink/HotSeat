@@ -129,10 +129,10 @@ function firstSentence(s) {
 function normalizeOptionText(raw, fallback) {
   let s = raw ? String(raw) : "";
   s = firstSentence(s);
-  s = trimToMaxWords(s, 18);
+  s = trimToMaxWords(s, 14);
   if (countWords(s) < 3) s = fallback;
   s = firstSentence(s);
-  s = trimToMaxWords(s, 18);
+  s = trimToMaxWords(s, 14);
   return s;
 }
 
