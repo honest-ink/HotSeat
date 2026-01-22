@@ -282,7 +282,7 @@ const runIntroTutorialThenStart = async () => {
     "Remember, clear and sincere answers will boost your stock price. Good luck!"
   );
   setTickerDirectionOverride("up");
-  pulseTicker();
+  //pulseTicker();
 
   // hold long enough to read
   await sleep(tut(1000));
@@ -693,7 +693,7 @@ const runIntroTutorialThenStart = async () => {
             <div className="absolute left-1/2 top-[18%] -translate-x-1/2 w-[min(820px,92vw)]">
               <div className="bg-black/70 border border-white/10 rounded-2xl shadow-2xl px-5 py-4 md:px-7 md:py-5">
                 <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-400 font-bold mb-2">
-                  Producer feed
+                  Assistant's Note
                 </div>
                 <div className="text-white text-lg md:text-2xl font-medium leading-snug">
                   {tutorialText}
