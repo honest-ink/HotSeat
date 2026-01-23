@@ -72,6 +72,51 @@ function App() {
 
   const lastQuestionRef = useRef<string | undefined>(undefined);
 
+  // ---- NEW: Download guide modal state + sessionId capture ----
+  const [isGuideModalOpen, setIsGuideModalOpen] = useState(false);
+  const [guideEmail, setGuideEmail] = useState("");
+  const [guideError, setGuideError] = useState<string | null>(null);
+  const [isGuideLoading, setIsGuideLoading] = useState(false);
+  const sessionIdRef = useRef<string | null>(null);
+
+  const requestInterviewGuide = async () => {
+    setGuideError(null);
+
+    const email = guideEmail.trim();
+    if (!email || !email.includes("@")) {
+      setGuideError("Enter a valid email.");
+      return;
+    }
+
+    setIsGuideLoading(true);
+    try {
+      const r = await fetch("/api/interview-guide", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          sessionId: sessionIdRef.current,
+          finalScore: interviewState.stockPrice,
+          companyName: company.name,
+          companyPitch: company.mission,
+        }),
+      });
+
+      const data = await r.json().catch(() => ({} as any));
+      if (!r.ok || !data?.url) {
+        throw new Error(data?.error || "Download failed");
+      }
+
+      setIsGuideModalOpen(false);
+      setGuideEmail("");
+      window.location.assign(data.url);
+    } catch (e) {
+      setGuideError("Couldn’t generate the download. Try again.");
+    } finally {
+      setIsGuideLoading(false);
+    }
+  };
+
   // ---- INTRO TUTORIAL ----
   const [isIntroTutorialActive, setIsIntroTutorialActive] = useState(false);
   const introTutorialRanRef = useRef(false);
@@ -186,6 +231,9 @@ function App() {
     try {
       const opening = (await GeminiService.initInterview(company)) as GeminiResponse;
 
+      // NEW: store sessionId for the download endpoint (if returned)
+      sessionIdRef.current = (opening as any)?.sessionId ?? null;
+
       postJournalistLine(opening.text);
       lastQuestionRef.current = opening.text;
 
@@ -239,68 +287,67 @@ function App() {
     setTickerPulseSeq((n) => n + 1);
   };
 
-const runIntroTutorialThenStart = async () => {
-  if (introTutorialRanRef.current) return;
-  introTutorialRanRef.current = true;
+  const runIntroTutorialThenStart = async () => {
+    if (introTutorialRanRef.current) return;
+    introTutorialRanRef.current = true;
 
-  const played =
-    window.localStorage.getItem("hotseat_intro_tutorial_played") === "1";
-  if (played) {
+    const played =
+      window.localStorage.getItem("hotseat_intro_tutorial_played") === "1";
+    if (played) {
+      await startFirstGeminiQuestion();
+      return;
+    }
+
+    setIsIntroTutorialActive(true);
+
+    // keep the overlay clean (no spotlight / arrows)
+    setShowTickerPointer(false);
+
+    const baselinePrice = STARTING_STOCK_PRICE;
+
+    // reset state for the intro (no answer options, no changes to price)
+    setAnswerOptions(null);
+    setOptionsOrder(null);
+    setIsAnswerLocked(true);
+
+    setInterviewState((prev) => ({
+      ...prev,
+      stockPrice: baselinePrice,
+      lowestPrice: baselinePrice,
+      audienceSentiment: 50,
+      awaitingAnswer: false,
+      startedAtMs: undefined,
+      questionAskedAtMs: undefined,
+      questionCount: 0,
+      maxQuestions: TOTAL_QUESTIONS,
+      outcome: undefined,
+      worstAnswer: undefined,
+      evasiveStreak: 0,
+    }));
+
+    // One line, one green pulse (no number change)
+    setTutorialText(
+      "Remember, clear and sincere answers will boost your stock price. Good luck!"
+    );
+    setTickerDirectionOverride("up");
+    //pulseTicker();
+
+    // hold long enough to read
+    await sleep(tut(1000));
+
+    // cleanup
+    setTutorialText("");
+    setTickerDirectionOverride(null);
+    setHighlightAnswerKey(null);
+    setIsIntroTutorialActive(false);
+
+    window.localStorage.setItem("hotseat_intro_tutorial_played", "1");
+
+    // optional: keep feed clean
+    setMessages([]);
+
     await startFirstGeminiQuestion();
-    return;
-  }
-
-  setIsIntroTutorialActive(true);
-
-  // keep the overlay clean (no spotlight / arrows)
-  setShowTickerPointer(false);
-
-  const baselinePrice = STARTING_STOCK_PRICE;
-
-  // reset state for the intro (no answer options, no changes to price)
-  setAnswerOptions(null);
-  setOptionsOrder(null);
-  setIsAnswerLocked(true);
-
-  setInterviewState((prev) => ({
-    ...prev,
-    stockPrice: baselinePrice,
-    lowestPrice: baselinePrice,
-    audienceSentiment: 50,
-    awaitingAnswer: false,
-    startedAtMs: undefined,
-    questionAskedAtMs: undefined,
-    questionCount: 0,
-    maxQuestions: TOTAL_QUESTIONS,
-    outcome: undefined,
-    worstAnswer: undefined,
-    evasiveStreak: 0,
-  }));
-
-  // One line, one green pulse (no number change)
-  setTutorialText(
-    "Remember, clear and sincere answers will boost your stock price. Good luck!"
-  );
-  setTickerDirectionOverride("up");
-  //pulseTicker();
-
-  // hold long enough to read
-  await sleep(tut(1000));
-
-  // cleanup
-  setTutorialText("");
-  setTickerDirectionOverride(null);
-  setHighlightAnswerKey(null);
-  setIsIntroTutorialActive(false);
-
-  window.localStorage.setItem("hotseat_intro_tutorial_played", "1");
-
-  // optional: keep feed clean
-  setMessages([]);
-
-  await startFirstGeminiQuestion();
-};
-
+  };
 
   const startInterview = async () => {
     clearTimers();
@@ -548,7 +595,7 @@ const runIntroTutorialThenStart = async () => {
     );
   }
 
-  // SUMMARY (unchanged)
+  // SUMMARY (updated)
   if (phase === GamePhase.SUMMARY) {
     const finalPrice = interviewState.stockPrice;
     const delta = Number((finalPrice - STARTING_STOCK_PRICE).toFixed(2));
@@ -610,17 +657,19 @@ const runIntroTutorialThenStart = async () => {
           </div>
 
           <div className="shrink-0 pb-2 flex flex-col items-center gap-4 w-full">
-            <a
-              href="https://www.honest-ink.com/contact"
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
+              onClick={() => {
+                setGuideError(null);
+                setIsGuideModalOpen(true);
+              }}
               className={`group text-black font-black uppercase px-8 py-4 rounded-full tracking-widest flex items-center justify-center gap-3 transition-all hover:scale-[1.02] shadow-xl w-full md:w-auto min-w-[300px] ${
                 isUp ? "bg-emerald-500 hover:bg-emerald-400" : "bg-red-500 hover:bg-red-400"
               }`}
             >
               <Calendar size={20} className="text-zinc-900" />
-              BOOK YOUR EDITORIAL BRIEFING
-            </a>
+              DOWNLOAD YOUR INTERVIEW GUIDE
+            </button>
 
             <button
               onClick={() => window.location.reload()}
@@ -630,6 +679,86 @@ const runIntroTutorialThenStart = async () => {
               Replay
             </button>
           </div>
+
+          {isGuideModalOpen && (
+            <div
+              className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Download interview guide"
+            >
+              <button
+                type="button"
+                className="absolute inset-0 bg-black/70"
+                onClick={() => !isGuideLoading && setIsGuideModalOpen(false)}
+                aria-label="Close"
+              />
+
+              <div className="relative w-full max-w-md rounded-2xl border border-zinc-700 bg-zinc-900 p-6 shadow-2xl">
+                <div className="flex items-start justify-between gap-4 mb-4">
+                  <div>
+                    <div className="text-sm font-bold uppercase tracking-widest text-zinc-400">
+                      Download
+                    </div>
+                    <h3 className="text-xl font-black uppercase tracking-tight">
+                      Your interview guide
+                    </h3>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => !isGuideLoading && setIsGuideModalOpen(false)}
+                    className="text-zinc-500 hover:text-white font-bold"
+                    aria-label="Close"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <label className="block text-xs font-bold uppercase tracking-widest text-zinc-500 mb-2">
+                  Email
+                </label>
+
+                <input
+                  type="email"
+                  value={guideEmail}
+                  onChange={(e) => setGuideEmail(e.target.value)}
+                  placeholder="you@company.com"
+                  className="w-full rounded-xl bg-black/40 border border-zinc-700 px-4 py-3 text-white outline-none focus:border-zinc-400"
+                  disabled={isGuideLoading}
+                  autoFocus
+                />
+
+                {guideError && <div className="mt-3 text-sm text-red-300">{guideError}</div>}
+
+                <div className="mt-5 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsGuideModalOpen(false)}
+                    className="flex-1 rounded-xl border border-zinc-700 px-4 py-3 text-xs font-bold uppercase tracking-widest text-zinc-300 hover:text-white"
+                    disabled={isGuideLoading}
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={requestInterviewGuide}
+                    className={`flex-1 rounded-xl px-4 py-3 text-xs font-black uppercase tracking-widest text-black ${
+                      isUp ? "bg-emerald-500 hover:bg-emerald-400" : "bg-red-500 hover:bg-red-400"
+                    } ${isGuideLoading ? "opacity-70 cursor-not-allowed" : ""}`}
+                    disabled={isGuideLoading}
+                  >
+                    {isGuideLoading ? "Generating…" : "Download"}
+                  </button>
+                </div>
+
+                <div className="mt-4 text-[11px] text-zinc-500 leading-relaxed">
+                  We’ll use this email to send the guide link.
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
