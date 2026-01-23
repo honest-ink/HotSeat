@@ -3,6 +3,7 @@ const express = require("express");
 const path = require("path");
 const crypto = require("crypto");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { Storage } = require("@google-cloud/storage");
 
 const app = express();
 const port = process.env.PORT || 8080;
@@ -12,6 +13,12 @@ app.use(express.json({ limit: "1mb" }));
 // ---- Gemini setup ----
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
+
+// ---- Download guide config ----
+const storage = new Storage();
+const GUIDE_BUCKET = process.env.GUIDE_BUCKET;
+const GUIDE_OBJECT = process.env.GUIDE_OBJECT;
+const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL;
 
 // Store sessions in memory
 const sessions = new Map();
@@ -168,6 +175,54 @@ function selectionToCategory(selectionKey) {
   return selectionKey === "evasive" ? "evasive" : "good";
 }
 
+// --- NEW: DOWNLOAD GUIDE ENDPOINT ---
+// POST /api/interview-guide
+// body: { email, sessionId, finalScore, companyName }
+// returns: { url }
+app.post("/api/interview-guide", async (req, res) => {
+  try {
+    const { email, sessionId, finalScore, companyName } = req.body || {};
+
+    if (!email || typeof email !== "string" || !email.includes("@")) {
+      return res.status(400).json({ error: "Invalid email" });
+    }
+
+    if (!GUIDE_BUCKET || !GUIDE_OBJECT) {
+      return res.status(500).json({ error: "Guide not configured (GUIDE_BUCKET/GUIDE_OBJECT)" });
+    }
+
+    // 1) Send capture to n8n (don’t block the download if n8n has a wobble)
+    if (N8N_WEBHOOK_URL) {
+      fetch(N8N_WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          sessionId,
+          finalScore,
+          companyName,
+          source: "hot-seat-download",
+          timestamp: new Date().toISOString(),
+        }),
+      }).catch((e) => console.error("[interview-guide] n8n webhook failed:", e));
+    }
+
+    // 2) Signed URL (V4), short expiry
+    const [url] = await storage.bucket(GUIDE_BUCKET).file(GUIDE_OBJECT).getSignedUrl({
+      version: "v4",
+      action: "read",
+      expires: Date.now() + 10 * 60 * 1000, // 10 minutes
+      responseDisposition: 'attachment; filename="Interview-Guide.pdf"',
+      responseType: "application/pdf",
+    });
+
+    return res.json({ url });
+  } catch (err) {
+    console.error("[interview-guide] error:", err);
+    return res.status(500).json({ error: "Failed to generate download" });
+  }
+});
+
 // --- ENDPOINTS ---
 
 app.get("/api/health", (req, res) => {
@@ -199,9 +254,9 @@ app.post("/api/init", async (req, res) => {
 
     // 2. Start Chat
     const chat = model.startChat({
-        history: [] 
+      history: [],
     });
-    
+
     sessions.set(sessionId, chat);
 
     console.log("[init] session:", sessionId, "company:", company.name);
@@ -210,11 +265,11 @@ app.post("/api/init", async (req, res) => {
     const result = await chat.sendMessage(
       "Start the show. Introduce the guest and ask the first opening question (Stage 1). Include two options (good/evasive)."
     );
-    
+
     // 4. Parse Response
     const responseText = result.response.text();
     const parsed = safeParseJson(responseText);
-    
+
     if (!parsed) {
       console.error("[init] bad json:", responseText);
       throw new Error("Invalid JSON from Gemini");
@@ -222,9 +277,8 @@ app.post("/api/init", async (req, res) => {
 
     const normalized = normalizeHostPayload({ ...parsed, category: "good" });
     res.json({ sessionId, ...normalized });
-
   } catch (err) {
-    console.error("[init] error:", err); 
+    console.error("[init] error:", err);
     res.status(500).json({
       sessionId: null,
       text: "Welcome to the show. In one sentence, what do you do and why should anyone trust you?",
@@ -294,9 +348,12 @@ app.post("/api/chat", async (req, res) => {
 app.post("/api/summary", async (req, res) => {
   try {
     const { sessionId, wrongAnswerText } = req.body;
-    
+
     if (!wrongAnswerText) {
-      return res.json({ producerNote: "Flawless execution. You stayed on message and controlled the narrative perfectly." });
+      return res.json({
+        producerNote:
+          "Flawless execution. You stayed on message and controlled the narrative perfectly.",
+      });
     }
 
     const chatSession = sessions.get(sessionId);
@@ -320,7 +377,6 @@ app.post("/api/summary", async (req, res) => {
 
     if (!parsed) throw new Error("Summary parsing failed");
     res.json(parsed);
-
   } catch (err) {
     console.error("[summary] error:", err);
     res.json({ producerNote: "Great effort. You had strong moments, but watch out for evasive answers." });
