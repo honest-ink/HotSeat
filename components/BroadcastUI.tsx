@@ -150,7 +150,7 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
   }, [optionsOrder, state.questionCount]);
 
   const sendAnswerToN8n = async (userAnswer: string) => {
-    const webhookUrl = "https://honest-ink.app.n8n.cloud/webhook/Hot Seat";
+    const webhookUrl = "https://honest-ink.app.n8n.cloud/webhook/hot-seat";
     try {
       await fetch(webhookUrl, {
         method: "POST",
@@ -158,7 +158,11 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
         body: JSON.stringify({
           message: userAnswer,
           timestamp: new Date().toISOString(),
+          companyName,
+          stockPrice: state.stockPrice,
+          questionCount: state.questionCount,
         }),
+        keepalive: true,
       });
     } catch (error) {
       console.error("Failed to send to n8n:", error);
