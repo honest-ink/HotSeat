@@ -72,72 +72,75 @@ function App() {
 
   const lastQuestionRef = useRef<string | undefined>(undefined);
 
-  // ---- NEW: Download guide modal state + sessionId capture ----
-  const [isGuideModalOpen, setIsGuideModalOpen] = useState(false);
-  const [guideEmail, setGuideEmail] = useState("");
-  const [guideError, setGuideError] = useState<string | null>(null);
-  const [isGuideLoading, setIsGuideLoading] = useState(false);
-  const sessionIdRef = useRef<string | null>(null);
+// ---- NEW: Download guide modal state + sessionId capture ----
+const [isGuideModalOpen, setIsGuideModalOpen] = useState(false);
+const [guideEmail, setGuideEmail] = useState("");
+const [guideError, setGuideError] = useState<string | null>(null);
+const [isGuideLoading, setIsGuideLoading] = useState(false);
+const sessionIdRef = useRef<string | null>(null);
 
-   const requestInterviewGuide = async () => {
-    setGuideError(null);
+const sendGuideEmailToN8n = async (email: string) => {
+  const webhookUrl = "https://honest-ink.app.n8n.cloud/webhook/hot-seat";
+  try {
+    await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        event: "guide_email_submitted",
+        email,
+        timestamp: new Date().toISOString(),
+        sessionId: sessionIdRef.current,
+        finalScore: interviewState.stockPrice,
+        companyName: company.name,
+        companyPitch: company.mission,
+      }),
+      keepalive: true,
+    });
+  } catch {
+    // ignore logging failures
+  }
+};
 
-    const email = guideEmail.trim();
-    if (!email || !email.includes("@")) {
-      setGuideError("Enter a valid email.");
-      return;
+const requestInterviewGuide = async () => {
+  setGuideError(null);
+
+  const email = guideEmail.trim();
+  if (!email || !email.includes("@")) {
+    setGuideError("Enter a valid email.");
+    return;
+  }
+
+  // non-blocking: don’t wait for this
+  void sendGuideEmailToN8n(email);
+
+  setIsGuideLoading(true);
+  try {
+    const r = await fetch("/api/interview-guide", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email,
+        sessionId: sessionIdRef.current,
+        finalScore: interviewState.stockPrice,
+        companyName: company.name,
+        companyPitch: company.mission,
+      }),
+    });
+
+    const data = await r.json().catch(() => ({} as any));
+    if (!r.ok || !data?.url) {
+      throw new Error(data?.error || "Download failed");
     }
 
-    // --- NEW: log email capture to n8n (non-blocking) ---
-    try {
-      fetch("https://honest-ink.app.n8n.cloud/webhook/hot-seat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          event: "guide_email_submitted",
-          email,
-          timestamp: new Date().toISOString(),
-          sessionId: sessionIdRef.current,
-          finalScore: interviewState.stockPrice,
-          companyName: company.name,
-          companyPitch: company.mission,
-        }),
-        keepalive: true,
-      }).catch(() => {});
-    } catch {
-      // ignore logging failures
-    }
-    // -----------------------------------------------------
-
-    setIsGuideLoading(true);
-    try {
-      const r = await fetch("/api/interview-guide", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email,
-          sessionId: sessionIdRef.current,
-          finalScore: interviewState.stockPrice,
-          companyName: company.name,
-          companyPitch: company.mission,
-        }),
-      });
-
-      const data = await r.json().catch(() => ({} as any));
-      if (!r.ok || !data?.url) {
-        throw new Error(data?.error || "Download failed");
-      }
-
-      setIsGuideModalOpen(false);
-      setGuideEmail("");
-      window.location.assign(data.url);
-    } catch (e) {
-      setGuideError("Couldn’t generate the download. Try again.");
-    } finally {
-      setIsGuideLoading(false);
-    }
-  };
-
+    setIsGuideModalOpen(false);
+    setGuideEmail("");
+    window.location.assign(data.url);
+  } catch (e) {
+    setGuideError("Couldn’t generate the download. Try again.");
+  } finally {
+    setIsGuideLoading(false);
+  }
+};
 
   // ---- INTRO TUTORIAL ----
   const [isIntroTutorialActive, setIsIntroTutorialActive] = useState(false);
