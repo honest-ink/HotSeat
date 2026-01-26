@@ -635,7 +635,7 @@ function App() {
             <div className="text-zinc-500 text-sm uppercase font-bold mb-2">Final Score</div>
 
           <div className="text-white text-2xl md:text-3xl font-black uppercase tracking-tight mb-3">
-            {companyName}
+            {company.name}
             </div>
             
             <div className="flex items-center justify-center gap-3">
