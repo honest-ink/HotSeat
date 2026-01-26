@@ -70,20 +70,34 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => setIsMounted(true), []);
 
-  // --- Stock Ticker Flash Logic (number flash) ---
+  // --- Stock Ticker Flash Logic (number + box flash) ---
   const [flashClass, setFlashClass] = useState("");
+  const [tickerBoxFlashClass, setTickerBoxFlashClass] = useState("");
+  const [tickerFlashKey, setTickerFlashKey] = useState(0);
   const prevPriceRef = useRef(state.stockPrice);
 
   useEffect(() => {
-    if (state.stockPrice > prevPriceRef.current) {
-      setFlashClass("animate-stock-up");
-    } else if (state.stockPrice < prevPriceRef.current) {
-      setFlashClass("animate-stock-down");
-    }
-    prevPriceRef.current = state.stockPrice;
+    const prev = prevPriceRef.current;
+    const next = state.stockPrice;
 
-    const timer = setTimeout(() => setFlashClass(""), flashDurationMs);
-    return () => clearTimeout(timer);
+    if (next === prev) return;
+
+    const wentUp = next > prev;
+
+    setFlashClass(wentUp ? "animate-stock-up" : "animate-stock-down");
+    setTickerBoxFlashClass(wentUp ? "tickerFlashUp" : "tickerFlashDown");
+
+    // force animation restart even if same direction repeats
+    setTickerFlashKey((k) => k + 1);
+
+    prevPriceRef.current = next;
+
+    const timer = window.setTimeout(() => {
+      setFlashClass("");
+      setTickerBoxFlashClass("");
+    }, flashDurationMs);
+
+    return () => window.clearTimeout(timer);
   }, [state.stockPrice, flashDurationMs]);
   // ----------------------------------------------
 
@@ -202,8 +216,9 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
 
         {/* Stock */}
         <div
+          key={tickerFlashKey}
           ref={tickerBoxRef}
-          className={`relative z-[9999] flex items-center gap-3 bg-black/60 backdrop-blur-md text-white px-4 py-2 rounded-lg border border-white/10 shadow-2xl ${tickerPulseClass}`}
+          className={`relative z-[9999] flex items-center gap-3 bg-black/60 backdrop-blur-md text-white px-4 py-2 rounded-lg border border-white/10 shadow-2xl ${tickerPulseClass} ${tickerBoxFlashClass}`}
         >
           <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider border-r border-gray-600 pr-3 mr-1">
             {tickerSymbol}
