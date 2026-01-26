@@ -79,7 +79,7 @@ function App() {
   const [isGuideLoading, setIsGuideLoading] = useState(false);
   const sessionIdRef = useRef<string | null>(null);
 
-  const requestInterviewGuide = async () => {
+   const requestInterviewGuide = async () => {
     setGuideError(null);
 
     const email = guideEmail.trim();
@@ -87,6 +87,27 @@ function App() {
       setGuideError("Enter a valid email.");
       return;
     }
+
+    // --- NEW: log email capture to n8n (non-blocking) ---
+    try {
+      fetch("https://honest-ink.app.n8n.cloud/webhook/hot-seat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          event: "guide_email_submitted",
+          email,
+          timestamp: new Date().toISOString(),
+          sessionId: sessionIdRef.current,
+          finalScore: interviewState.stockPrice,
+          companyName: company.name,
+          companyPitch: company.mission,
+        }),
+        keepalive: true,
+      }).catch(() => {});
+    } catch {
+      // ignore logging failures
+    }
+    // -----------------------------------------------------
 
     setIsGuideLoading(true);
     try {
@@ -116,6 +137,7 @@ function App() {
       setIsGuideLoading(false);
     }
   };
+
 
   // ---- INTRO TUTORIAL ----
   const [isIntroTutorialActive, setIsIntroTutorialActive] = useState(false);
