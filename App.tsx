@@ -634,6 +634,10 @@ function App() {
           <div className="bg-black/40 p-6 rounded-xl border border-zinc-800 mb-6 shrink-0">
             <div className="text-zinc-500 text-sm uppercase font-bold mb-2">Final Score</div>
 
+          <div className="text-white text-2xl md:text-3xl font-black uppercase tracking-tight mb-3">
+            {companyName}
+            </div>
+            
             <div className="flex items-center justify-center gap-3">
               <ScoreIcon size={22} className={isUp ? "text-emerald-400" : "text-red-400"} />
               <div
