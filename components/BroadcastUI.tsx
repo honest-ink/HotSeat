@@ -149,13 +149,17 @@ const BroadcastUI: React.FC<BroadcastUIProps> = ({
     return base.reverse();
   }, [optionsOrder, state.questionCount]);
 
-  const sendAnswerToN8n = async (userAnswer: string) => {
-    const webhookUrl = "https://honest-ink.app.n8n.cloud/webhook/hot-seat";
+    const sendAnswerToN8n = async (userAnswer: string) => {
+    const webhookUrl = import.meta.env.DEV
+      ? "https://honest-ink.app.n8n.cloud/webhook-test/hot-seat"
+      : "https://honest-ink.app.n8n.cloud/webhook/hot-seat";
+
     try {
       await fetch(webhookUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          event: "answer_selected",
           message: userAnswer,
           timestamp: new Date().toISOString(),
           companyName,
